@@ -8,7 +8,7 @@ The recommended production implementation is:
 
 - Go CLI named `agent-packs`, with short alias `ap`.
 - Static registry index hosted on GitHub Pages, S3, Cloudflare R2, or a CDN.
-- Pack manifests as JSON or YAML, validated against `schemas/agent-pack.schema.json`.
+- Pack manifests as JSON or YAML, validated against `dev/schemas/agent-pack.schema.json`.
 - Install receipts stored under the user's agent configuration directory.
 - Optional TypeScript web app for discovery, ratings, and pack pages.
 
@@ -54,4 +54,3 @@ Rust is also a strong choice, especially if the CLI needs maximum performance or
 deep package-management guarantees. It has a steeper contribution curve. Node is
 good for rapid iteration and web-adjacent contributors, but less ideal for a
 system installer because users inherit runtime and package-manager complexity.
-

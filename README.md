@@ -28,9 +28,9 @@ formats are intentionally language-neutral.
 ## Prototype Usage
 
 ```sh
-python3 bin/agent-packs search
-python3 bin/agent-packs show frontend-engineer
-python3 bin/agent-packs install frontend-engineer --target ./sandbox
+python3 dev/bin/agent-packs search
+python3 dev/bin/agent-packs show frontend-engineer
+python3 dev/bin/agent-packs install frontend-engineer --target ./sandbox
 ```
 
 ## Core Concepts
