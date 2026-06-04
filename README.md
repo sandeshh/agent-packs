@@ -33,6 +33,12 @@ python3 dev/bin/agent-packs show frontend-engineer
 python3 dev/bin/agent-packs install frontend-engineer --target ./sandbox
 ```
 
+## Tests
+
+```sh
+python3 -m unittest discover -s dev/tests
+```
+
 ## Core Concepts
 
 - Pack: a curated bundle for a role, stack, workflow, or task.
