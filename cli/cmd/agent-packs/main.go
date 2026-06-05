@@ -56,7 +56,7 @@ func main() {
 	case "uninstall":
 		err = runUninstall(defaultTarget, os.Args[2:])
 	case "doctor":
-		err = agentpacks.Doctor(registry, defaultTarget, os.Stdout)
+		err = runDoctor(registry, defaultTarget, os.Args[2:])
 	case "validate":
 		err = runValidate(os.Args[2:])
 	case "registry":
@@ -95,7 +95,8 @@ func runInstall(registry, defaultTarget string, args []string) error {
 	flags := flag.NewFlagSet("install", flag.ContinueOnError)
 	flags.SetOutput(os.Stderr)
 	target := flags.String("target", defaultTarget, "installation target directory")
-	agent := flags.String("agent", "generic", "target agent: claude, codex, or generic")
+	agent := flags.String("agent", "generic", "target agent/tool")
+	targetTool := flags.String("target-tool", "", "target tool alias for --agent")
 	only := flags.String("only", "all", "capability filter: all, skills, or plugins")
 	dryRun := flags.Bool("dry-run", false, "print installation plan without writing files")
 	executePlugins := flags.Bool("execute-plugins", false, "run native plugin installation commands")
@@ -110,8 +111,11 @@ func runInstall(registry, defaultTarget string, args []string) error {
 	if len(remaining) != 1 {
 		return fmt.Errorf("usage: agent-packs install <pack-id|registry/pack-id> [--target dir] [--agent name] [--only filter] [--dry-run] [--execute-plugins]")
 	}
+	if *targetTool != "" {
+		*agent = *targetTool
+	}
 	if !validAgent(*agent) {
-		return fmt.Errorf("invalid agent %q: expected claude, codex, or generic", *agent)
+		return fmt.Errorf("invalid agent %q: run `agent-packs doctor targets` for supported tools", *agent)
 	}
 	if *only != "all" && *only != "skills" && *only != "plugins" {
 		return fmt.Errorf("invalid --only %q: expected all, skills, or plugins", *only)
@@ -157,6 +161,16 @@ func runUninstall(defaultTarget string, args []string) error {
 		return fmt.Errorf("usage: agent-packs uninstall <pack-id> [--target dir]")
 	}
 	return agentpacks.Uninstall(*target, remaining[0], os.Stdout)
+}
+
+func runDoctor(registry, defaultTarget string, args []string) error {
+	if len(args) == 1 && args[0] == "targets" {
+		return agentpacks.PrintTargetMatrix(os.Stdout)
+	}
+	if len(args) != 0 {
+		return fmt.Errorf("usage: agent-packs doctor [targets]")
+	}
+	return agentpacks.Doctor(registry, defaultTarget, os.Stdout)
 }
 
 func runValidate(args []string) error {
@@ -279,7 +293,7 @@ func normalizeInstallArgs(args []string) []string {
 			flags = append(flags, arg)
 			continue
 		}
-		if arg == "--target" || arg == "--agent" || arg == "--only" || arg == "--mode" || arg == "--on-conflict" || arg == "--project" {
+		if arg == "--target" || arg == "--agent" || arg == "--target-tool" || arg == "--only" || arg == "--mode" || arg == "--on-conflict" || arg == "--project" {
 			flags = append(flags, arg)
 			if i+1 < len(args) {
 				flags = append(flags, args[i+1])
@@ -287,7 +301,7 @@ func normalizeInstallArgs(args []string) []string {
 			}
 			continue
 		}
-		if strings.HasPrefix(arg, "--target=") || strings.HasPrefix(arg, "--agent=") || strings.HasPrefix(arg, "--only=") || strings.HasPrefix(arg, "--mode=") || strings.HasPrefix(arg, "--on-conflict=") || strings.HasPrefix(arg, "--project=") {
+		if strings.HasPrefix(arg, "--target=") || strings.HasPrefix(arg, "--agent=") || strings.HasPrefix(arg, "--target-tool=") || strings.HasPrefix(arg, "--only=") || strings.HasPrefix(arg, "--mode=") || strings.HasPrefix(arg, "--on-conflict=") || strings.HasPrefix(arg, "--project=") {
 			flags = append(flags, arg)
 			continue
 		}
@@ -339,14 +353,14 @@ func usage() {
 	fmt.Fprintln(os.Stderr, "Usage:")
 	fmt.Fprintln(os.Stderr, "  agent-packs search [query]")
 	fmt.Fprintln(os.Stderr, "  agent-packs show <pack-id>")
-	fmt.Fprintln(os.Stderr, "  agent-packs install <pack-id|registry/pack-id> [--target dir] [--agent claude|codex|generic] [--only all|skills|plugins] [--mode reference|symlink|copy|native] [--on-conflict skip|overwrite|backup] [--project dir|--global] [--dry-run] [--execute-plugins]")
+	fmt.Fprintln(os.Stderr, "  agent-packs install <pack-id|registry/pack-id> [--target dir] [--agent tool|--target-tool tool] [--only all|skills|plugins] [--mode reference|symlink|copy|native] [--on-conflict skip|overwrite|backup] [--project dir|--global] [--dry-run] [--execute-plugins]")
 	fmt.Fprintln(os.Stderr, "  agent-packs list [--target dir]")
 	fmt.Fprintln(os.Stderr, "  agent-packs update|outdated|cache ...")
 	fmt.Fprintln(os.Stderr, "  agent-packs scan [path]")
 	fmt.Fprintln(os.Stderr, "  agent-packs import <skills-dir> [--target dir]")
 	fmt.Fprintln(os.Stderr, "  agent-packs lint|verify <pack-id>")
 	fmt.Fprintln(os.Stderr, "  agent-packs uninstall <pack-id> [--target dir]")
-	fmt.Fprintln(os.Stderr, "  agent-packs doctor")
+	fmt.Fprintln(os.Stderr, "  agent-packs doctor [targets]")
 	fmt.Fprintln(os.Stderr, "  agent-packs validate <file-or-directory>")
 	fmt.Fprintln(os.Stderr, "  agent-packs registry add|list|remove ...")
 }

@@ -38,7 +38,7 @@ Additional commands:
 ```sh
 cli/bin/agent-packs registry add local /path/to/agent-packs
 cli/bin/agent-packs install local/frontend-engineer --dry-run
-cli/bin/agent-packs install eng-leader --mode symlink --on-conflict backup --project .
+cli/bin/agent-packs install eng-leader --target-tool codex --mode symlink --on-conflict backup --project .
 cli/bin/agent-packs cache
 cli/bin/agent-packs update --all
 cli/bin/agent-packs outdated
@@ -49,6 +49,7 @@ cli/bin/agent-packs verify eng-leader
 cli/bin/agent-packs list --target ./sandbox
 cli/bin/agent-packs uninstall frontend-engineer --target ./sandbox
 cli/bin/agent-packs doctor
+cli/bin/agent-packs doctor targets
 cli/bin/agent-packs validate registry/packs
 cli/bin/agent-packs validate registry/skills
 cli/bin/agent-packs validate registry/plugins
@@ -59,6 +60,12 @@ cli/bin/agent-packs validate registry/plugins
 - `frontend-engineer`: frontend implementation and browser verification workflows.
 - `pr-review`: code review and pull request inspection workflows.
 - `eng-leader`: engineering leadership workflows for strategy, planning, quality, architecture decisions, delivery, launch readiness, security, and performance. Several skills reference Addy Osmani's public `addyosmani/agent-skills` repository via upstream source metadata.
+
+## Tool Target Matrix
+
+Agent Packs knows common global and project skill directories for supported coding tools. Use `agent-packs doctor targets` to inspect the matrix. Install with `--agent <tool>` or `--target-tool <tool>`. Project installs use the tool's project skill directory, for example Codex project installs target `.agents/skills`.
+
+Supported tools include `codex`, `claude`, `cursor`, `gemini`, `copilot`, `goose`, `opencode`, and `generic`.
 
 ## Installation Model
 

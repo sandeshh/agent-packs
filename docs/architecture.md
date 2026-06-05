@@ -22,6 +22,7 @@ Implemented commands:
 - `agent-packs list`
 - `agent-packs uninstall <pack>`
 - `agent-packs doctor`
+- `agent-packs doctor targets`
 - `agent-packs validate <file-or-directory>`
 - `agent-packs registry add <name> <source>`
 - `agent-packs registry list`
@@ -53,7 +54,7 @@ curl -fsSL https://agentpacks.dev/install.sh | sh
 
 Plugin install commands are not executed unless the user passes `--execute-plugins`. Plugin capabilities with install commands should set `requiresExecution: true` and should include trust metadata such as `trust: "official"` or `trust: "community"`.
 
-Registry skills and plugins are referenced from their upstream source and are not copied into the selected agent target. Pack-level `skills` and `plugins` can be registry ID strings or object refs with remote `source` URLs, so a pack can depend on a remote skill/plugin without vendoring it into this registry. The Agent Pack spec keeps `source` as the installer-resolved location or command; optional `upstreamSource` is only for separate provenance or attribution metadata. Inline skill capabilities can still opt into copy/fetch behavior, and inline plugin commands can still opt into native execution with `--execute-plugins`. Integrity metadata can be represented with `integrity.checksum` and `integrity.signature`; lockfiles record a digest for every capability.
+The target matrix maps supported tools to global and project skill directories. Registry skills and plugins are referenced from their upstream source and are not copied into the selected agent target. Pack-level `skills` and `plugins` can be registry ID strings or object refs with remote `source` URLs, so a pack can depend on a remote skill/plugin without vendoring it into this registry. The Agent Pack spec keeps `source` as the installer-resolved location or command; optional `upstreamSource` is only for separate provenance or attribution metadata. Inline skill capabilities can still opt into copy/fetch behavior, and inline plugin commands can still opt into native execution with `--execute-plugins`. Integrity metadata can be represented with `integrity.checksum` and `integrity.signature`; lockfiles record a digest for every capability.
 
 ## Why Go
 

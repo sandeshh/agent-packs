@@ -207,10 +207,32 @@ type RegistryConfig struct {
 	Registries map[string]string `json:"registries"`
 }
 
-var SkillTargets = map[string]string{
-	"claude":  ".claude/skills",
-	"codex":   ".codex/skills",
-	"generic": "skills",
+type TargetSpec struct {
+	ID            string
+	Name          string
+	GlobalSkills  string
+	ProjectSkills string
+}
+
+var TargetMatrix = map[string]TargetSpec{
+	"claude":   {ID: "claude", Name: "Claude Code", GlobalSkills: ".claude/skills", ProjectSkills: ".claude/skills"},
+	"codex":    {ID: "codex", Name: "Codex", GlobalSkills: ".codex/skills", ProjectSkills: ".agents/skills"},
+	"cursor":   {ID: "cursor", Name: "Cursor", GlobalSkills: ".cursor/skills", ProjectSkills: ".cursor/skills"},
+	"gemini":   {ID: "gemini", Name: "Gemini CLI", GlobalSkills: ".gemini/skills", ProjectSkills: ".gemini/skills"},
+	"copilot":  {ID: "copilot", Name: "GitHub Copilot", GlobalSkills: ".github/skills", ProjectSkills: ".github/skills"},
+	"goose":    {ID: "goose", Name: "Goose", GlobalSkills: ".goose/skills", ProjectSkills: ".goose/skills"},
+	"opencode": {ID: "opencode", Name: "OpenCode", GlobalSkills: ".opencode/skills", ProjectSkills: ".opencode/skills"},
+	"generic":  {ID: "generic", Name: "Generic", GlobalSkills: "skills", ProjectSkills: "skills"},
+}
+
+var SkillTargets = legacySkillTargets()
+
+func legacySkillTargets() map[string]string {
+	targets := map[string]string{}
+	for id, spec := range TargetMatrix {
+		targets[id] = spec.GlobalSkills
+	}
+	return targets
 }
 
 var (
@@ -606,7 +628,7 @@ func LoadReceipt(path string) (Receipt, error) {
 }
 
 func Doctor(defaultRegistry, home string, out io.Writer) error {
-	checks := []struct{ name, command string }{{"git", "git"}, {"go", "go"}, {"claude", "claude"}, {"codex", "codex"}}
+	checks := []struct{ name, command string }{{"git", "git"}, {"go", "go"}, {"claude", "claude"}, {"codex", "codex"}, {"gemini", "gemini"}, {"goose", "goose"}, {"opencode", "opencode"}}
 	for _, check := range checks {
 		if _, err := exec.LookPath(check.command); err != nil {
 			fmt.Fprintf(out, "WARN  %s not found\n", check.name)
@@ -1334,12 +1356,30 @@ func planCapability(capability Capability, target, agent string, options Install
 	}
 }
 
-func skillTargetRoot(target, agent string) string {
-	root, ok := SkillTargets[agent]
+func skillTargetRoot(target, agent, scope string) string {
+	spec, ok := TargetMatrix[agent]
 	if !ok {
-		root = SkillTargets["generic"]
+		spec = TargetMatrix["generic"]
+	}
+	root := spec.GlobalSkills
+	if scope == "project" {
+		root = spec.ProjectSkills
 	}
 	return filepath.Join(target, root)
+}
+
+func PrintTargetMatrix(out io.Writer) error {
+	ids := []string{}
+	for id := range TargetMatrix {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	fmt.Fprintln(out, "tool	name	global skills	project skills")
+	for _, id := range ids {
+		spec := TargetMatrix[id]
+		fmt.Fprintf(out, "%s	%s	%s	%s\n", spec.ID, spec.Name, spec.GlobalSkills, spec.ProjectSkills)
+	}
+	return nil
 }
 
 func installSkill(item PlanItem, target string) PlanItem {
@@ -1380,7 +1420,7 @@ func skillDestination(capability Capability, target, agent string, options Insta
 	if options.Mode == "reference" || options.Mode == "native" {
 		return ""
 	}
-	return filepath.Join(skillTargetRoot(target, agent), slugify(capability.Name))
+	return filepath.Join(skillTargetRoot(target, agent, options.Scope), slugify(capability.Name))
 }
 
 func handleDestinationConflict(destination, onConflict string, item *PlanItem) bool {

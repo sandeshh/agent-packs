@@ -27,6 +27,28 @@ func TestBuildInstallPlanTargetsCodexSkills(t *testing.T) {
 	}
 }
 
+func TestProjectScopeUsesTargetMatrix(t *testing.T) {
+	pack := testPack("/tmp/example-skill")
+	plan := BuildInstallPlanWithOptions(pack, "/tmp/project", "codex", "skills", InstallOptions{Mode: "copy", OnConflict: "overwrite", Scope: "project"})
+	if len(plan.Capabilities) != 1 {
+		t.Fatalf("expected 1 capability, got %d", len(plan.Capabilities))
+	}
+	if !strings.HasSuffix(plan.Capabilities[0].Destination, filepath.Join(".agents", "skills", "example-skill")) {
+		t.Fatalf("unexpected project destination: %s", plan.Capabilities[0].Destination)
+	}
+}
+
+func TestPrintTargetMatrixIncludesCodex(t *testing.T) {
+	var output strings.Builder
+	if err := PrintTargetMatrix(&output); err != nil {
+		t.Fatal(err)
+	}
+	text := output.String()
+	if !strings.Contains(text, "codex") || !strings.Contains(text, ".agents/skills") {
+		t.Fatalf("target matrix missing codex project mapping: %s", text)
+	}
+}
+
 func TestExecutePlanInstallsLocalSkill(t *testing.T) {
 	temp := t.TempDir()
 	skill := filepath.Join(temp, "skill")
