@@ -639,9 +639,6 @@ func ResolveCapabilityRef(registry, capabilityType string, ref CapabilityRef) (C
 		name = ref.ID
 	}
 	upstreamSource := ref.UpstreamSource
-	if upstreamSource == "" {
-		upstreamSource = ref.Source
-	}
 	format := ref.Format
 	entry := ref.Entry
 	install := ref.Install
@@ -691,10 +688,10 @@ func FindCapability(registry, kind, id string) (Capability, error) {
 
 func SkillCapability(id, path string, manifest SkillManifest) Capability {
 	upstreamSource := manifest.Metadata["agentpacks.upstreamSource"]
-	if upstreamSource == "" {
-		upstreamSource = manifest.Metadata["agentpacks.source"]
+	source := manifest.Metadata["agentpacks.source"]
+	if source == "" {
+		source = upstreamSource
 	}
-	source := upstreamSource
 	if source == "" {
 		source = filepath.Dir(path)
 	}
@@ -713,7 +710,7 @@ func PluginCapability(id, root string, manifest PluginManifest) Capability {
 	if source == "" {
 		source = root
 	}
-	return Capability{Type: "plugin", Name: name, Source: source, UpstreamSource: source, Format: "anthropic-plugin", Entry: ".claude-plugin/plugin.json", Version: manifest.Version, Homepage: manifest.Homepage, Repository: manifest.Repository, License: manifest.License, Install: map[string]string{"method": "manual", "package": manifest.Name}, Reference: true}
+	return Capability{Type: "plugin", Name: name, Source: source, Format: "anthropic-plugin", Entry: ".claude-plugin/plugin.json", Version: manifest.Version, Homepage: manifest.Homepage, Repository: manifest.Repository, License: manifest.License, Install: map[string]string{"method": "manual", "package": manifest.Name}, Reference: true}
 }
 
 func LoadSkillManifest(path string) (SkillManifest, error) {

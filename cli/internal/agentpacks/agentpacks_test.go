@@ -171,10 +171,9 @@ func TestExpandPackIncludesRemoteSkillAndPluginRefs(t *testing.T) {
 		Version:     "0.1.0",
 		Description: "Remote references pack",
 		Skills: CapabilityRefs{{
-			ID:             "strategy",
-			Name:           "Strategy Skill",
-			Source:         "https://github.com/example/skills/tree/main/strategy",
-			UpstreamSource: "https://github.com/example/skills",
+			ID:     "strategy",
+			Name:   "Strategy Skill",
+			Source: "https://github.com/example/skills/tree/main/strategy",
 		}},
 		Plugins: CapabilityRefs{{
 			ID:     "review-plugin",
@@ -196,7 +195,7 @@ func TestExpandPackIncludesRemoteSkillAndPluginRefs(t *testing.T) {
 		t.Fatalf("expected 2 remote ref capabilities, got %d", len(expanded.Capabilities))
 	}
 	skill := expanded.Capabilities[0]
-	if skill.Type != "skill" || !skill.Reference || skill.Source != "https://github.com/example/skills/tree/main/strategy" || skill.UpstreamSource != "https://github.com/example/skills" {
+	if skill.Type != "skill" || !skill.Reference || skill.Source != "https://github.com/example/skills/tree/main/strategy" {
 		t.Fatalf("unexpected remote skill capability: %#v", skill)
 	}
 	plugin := expanded.Capabilities[1]

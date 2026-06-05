@@ -186,7 +186,6 @@ def valid_pack():
         "name": "Example Pack",
         "version": "0.1.0",
         "description": "A valid pack for tests.",
-        "upstreamSource": "https://example.com/packs/example-pack",
         "license": "Apache-2.0",
         "tags": ["example"],
         "capabilities": [
@@ -194,7 +193,6 @@ def valid_pack():
                 "type": "skill",
                 "name": "Example skill",
                 "source": "https://example.com/skill",
-                "upstreamSource": "https://github.com/example/skills/tree/main/example-skill",
                 "format": "agent-skill",
                 "entry": "SKILL.md",
             }
@@ -280,7 +278,7 @@ class AgentPackSchemaTest(unittest.TestCase):
     def test_allows_remote_skill_and_plugin_refs(self):
         pack = valid_pack()
         pack.pop("capabilities")
-        pack["skills"] = [{"id": "remote-skill", "source": "https://github.com/example/skills/tree/main/remote", "upstreamSource": "https://github.com/example/skills", "format": "agent-skill"}]
+        pack["skills"] = [{"id": "remote-skill", "source": "https://github.com/example/skills/tree/main/remote", "format": "agent-skill"}]
         pack["plugins"] = [{"id": "remote-plugin", "source": "https://github.com/example/plugins/tree/main/remote", "format": "anthropic-plugin"}]
         self.assert_valid(pack)
 

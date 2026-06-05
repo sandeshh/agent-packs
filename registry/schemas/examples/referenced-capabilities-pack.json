@@ -15,7 +15,6 @@
       "id": "remote-planning-skill",
       "name": "Remote planning skill",
       "source": "https://github.com/addyosmani/agent-skills/tree/main/skills/planning-and-task-breakdown",
-      "upstreamSource": "https://github.com/addyosmani/agent-skills",
       "format": "agent-skill",
       "entry": "SKILL.md"
     }
@@ -26,7 +25,6 @@
       "id": "remote-code-review-plugin",
       "name": "Remote code review plugin",
       "source": "https://github.com/anthropics/claude-plugins-official/tree/main/plugins/code-review",
-      "upstreamSource": "https://github.com/anthropics/claude-plugins-official",
       "format": "anthropic-plugin",
       "entry": ".claude-plugin/plugin.json"
     }
