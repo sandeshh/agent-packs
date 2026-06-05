@@ -53,6 +53,8 @@ func main() {
 		err = runLint(registry, os.Args[2:])
 	case "verify":
 		err = runVerify(registry, os.Args[2:])
+	case "resolve":
+		err = runResolve(registry, os.Args[2:])
 	case "uninstall":
 		err = runUninstall(defaultTarget, os.Args[2:])
 	case "doctor":
@@ -250,6 +252,13 @@ func runVerify(registry string, args []string) error {
 	return agentpacks.Verify(registry, args[0], os.Stdout)
 }
 
+func runResolve(registry string, args []string) error {
+	if len(args) != 1 {
+		return fmt.Errorf("usage: agent-packs resolve <pack-id>")
+	}
+	return agentpacks.ResolveSources(registry, args[0], os.Stdout)
+}
+
 func runRegistry(defaultTarget string, args []string) error {
 	if len(args) < 1 {
 		return fmt.Errorf("usage: agent-packs registry <add|list|remove> ...")
@@ -358,7 +367,7 @@ func usage() {
 	fmt.Fprintln(os.Stderr, "  agent-packs update|outdated|cache ...")
 	fmt.Fprintln(os.Stderr, "  agent-packs scan [path]")
 	fmt.Fprintln(os.Stderr, "  agent-packs import <skills-dir> [--target dir]")
-	fmt.Fprintln(os.Stderr, "  agent-packs lint|verify <pack-id>")
+	fmt.Fprintln(os.Stderr, "  agent-packs lint|verify|resolve <pack-id>")
 	fmt.Fprintln(os.Stderr, "  agent-packs uninstall <pack-id> [--target dir]")
 	fmt.Fprintln(os.Stderr, "  agent-packs doctor [targets]")
 	fmt.Fprintln(os.Stderr, "  agent-packs validate <file-or-directory>")

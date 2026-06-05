@@ -46,6 +46,7 @@ cli/bin/agent-packs scan ~/.codex/skills
 cli/bin/agent-packs import ~/.codex/skills
 cli/bin/agent-packs lint eng-leader
 cli/bin/agent-packs verify eng-leader
+cli/bin/agent-packs resolve eng-leader
 cli/bin/agent-packs list --target ./sandbox
 cli/bin/agent-packs uninstall frontend-engineer --target ./sandbox
 cli/bin/agent-packs doctor
@@ -72,7 +73,7 @@ Supported tools include `codex`, `claude`, `cursor`, `gemini`, `copilot`, `goose
 Agent Packs orchestrates native install flows instead of replacing them.
 
 - Pack-level `skills` and `plugins` entries are source references. They are recorded in plans, receipts, and lockfiles, but are not copied into the target.
-- `source` is the location or command the installer resolves.
+- `source` is the location or command the installer resolves. Prefer pinned commit refs for reproducibility.
 - Optional `upstreamSource` is only for attribution/provenance when `source` is not enough.
 - Registry skills point at remote sources with `metadata.agentpacks.source`.
 - Registry plugins reference their `repository` or `homepage` when available; otherwise they reference their registry directory.
@@ -95,7 +96,8 @@ Agent Packs supports a basic package-manager lifecycle:
 - `scan [path]`: discovers existing `SKILL.md` files.
 - `import <skills-dir>`: copies discovered skills into `<target>/sources/imported/`.
 - `lint <pack>`: validates pack metadata.
-- `verify <pack>`: expands a pack and checks duplicate/missing capability sources.
+- `verify <pack>`: expands a pack, checks duplicate/missing capability sources, and warns about moving remote refs.
+- `resolve <pack>`: classifies sources as local, GitHub tree, pinned, or moving refs.
 
 ## Remote Registries
 

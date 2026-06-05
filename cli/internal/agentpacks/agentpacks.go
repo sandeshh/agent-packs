@@ -203,6 +203,14 @@ type LockEntry struct {
 	Digest         string    `json:"digest"`
 }
 
+type SourceResolution struct {
+	Source   string
+	Kind     string
+	Revision string
+	Pinned   bool
+	Warning  string
+}
+
 type RegistryConfig struct {
 	Registries map[string]string `json:"registries"`
 }
@@ -795,12 +803,62 @@ func Verify(registry, packRef string, out io.Writer) error {
 			fmt.Fprintf(out, "FAIL  missing source: %s\n", key)
 			fail = true
 		}
+		resolution := ResolveSource(capability.Source)
+		if resolution.Warning != "" {
+			fmt.Fprintf(out, "WARN  %s: %s\n", key, resolution.Warning)
+		}
 	}
 	if fail {
 		return ErrInstallFailed
 	}
 	fmt.Fprintf(out, "OK    %s verified (%d capabilities)\n", expanded.ID, len(expanded.Capabilities))
 	return nil
+}
+
+func ResolveSources(registry, packRef string, out io.Writer) error {
+	pack, err := FindPack(registry, packRef)
+	if err != nil {
+		return err
+	}
+	expanded, err := ExpandPack(registry, pack, map[string]bool{})
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(out, "Pack: %s\n", expanded.ID)
+	for _, capability := range expanded.Capabilities {
+		resolution := ResolveSource(capability.Source)
+		line := fmt.Sprintf("%s\t%s\t%s", capability.Type, capability.Name, resolution.Kind)
+		if resolution.Revision != "" {
+			line += "\t" + resolution.Revision
+		}
+		if resolution.Pinned {
+			line += "\tpinned"
+		}
+		if resolution.Warning != "" {
+			line += "\tWARN " + resolution.Warning
+		}
+		fmt.Fprintln(out, line)
+	}
+	return nil
+}
+
+func ResolveSource(source string) SourceResolution {
+	if source == "" {
+		return SourceResolution{Source: source, Kind: "missing", Warning: "source is empty"}
+	}
+	if isLocalSource(source) {
+		revision := resolveLocalSourceRevision(source)
+		return SourceResolution{Source: source, Kind: "local", Revision: revision, Pinned: revision != "", Warning: localRevisionWarning(revision)}
+	}
+	repo, ref, _ := parseGitHubTree(source)
+	if repo != "" {
+		resolution := SourceResolution{Source: source, Kind: "github-tree", Revision: ref, Pinned: isCommitSHA(ref)}
+		if !resolution.Pinned {
+			resolution.Warning = "source tracks a moving ref; pin to a commit for reproducibility"
+		}
+		return resolution
+	}
+	return SourceResolution{Source: source, Kind: "remote", Warning: "remote revision is unresolved; use a pinned commit when possible"}
 }
 
 func ValidatePath(path string, out io.Writer) error {
@@ -1163,13 +1221,13 @@ func ValidateCapabilityRef(ref CapabilityRef, capabilityType, prefix string) []s
 func WriteLockfile(packDir string, pack Pack) error {
 	lock := Lockfile{GeneratedAt: time.Now().UTC().Format(time.RFC3339Nano), Pack: pack.ID, Version: pack.Version}
 	for _, capability := range pack.Capabilities {
-		entry := LockEntry{Type: capability.Type, Name: capability.Name, Source: capability.Source, UpstreamSource: capability.UpstreamSource, Version: capability.Version, Revision: resolveSourceRevision(capability.Source), ResolvedAt: time.Now().UTC().Format(time.RFC3339Nano), Integrity: capability.Integrity, Digest: digestCapability(capability)}
+		entry := LockEntry{Type: capability.Type, Name: capability.Name, Source: capability.Source, UpstreamSource: capability.UpstreamSource, Version: capability.Version, Revision: ResolveSource(capability.Source).Revision, ResolvedAt: time.Now().UTC().Format(time.RFC3339Nano), Integrity: capability.Integrity, Digest: digestCapability(capability)}
 		lock.Capabilities = append(lock.Capabilities, entry)
 	}
 	return writeJSON(filepath.Join(packDir, "agent-pack.lock"), lock)
 }
 
-func resolveSourceRevision(source string) string {
+func resolveLocalSourceRevision(source string) string {
 	if source == "" || !isLocalSource(source) {
 		return ""
 	}
@@ -1180,6 +1238,17 @@ func resolveSourceRevision(source string) string {
 		return ""
 	}
 	return strings.TrimSpace(stdout.String())
+}
+
+func localRevisionWarning(revision string) string {
+	if revision == "" {
+		return "local source is not a git repository or revision could not be resolved"
+	}
+	return ""
+}
+
+func isCommitSHA(value string) bool {
+	return regexp.MustCompile(`^[0-9a-fA-F]{40}$`).MatchString(value)
 }
 
 func RegistryAdd(home, name, source string) error {

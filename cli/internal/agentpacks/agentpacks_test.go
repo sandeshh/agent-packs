@@ -233,6 +233,40 @@ func TestExpandPackIncludesRemoteSkillAndPluginRefs(t *testing.T) {
 	}
 }
 
+func TestResolveSourceClassifiesPinnedAndMovingGitHubRefs(t *testing.T) {
+	pinned := ResolveSource("https://github.com/example/repo/tree/0123456789abcdef0123456789abcdef01234567/skills/foo")
+	if !pinned.Pinned || pinned.Warning != "" || pinned.Revision != "0123456789abcdef0123456789abcdef01234567" {
+		t.Fatalf("unexpected pinned resolution: %#v", pinned)
+	}
+	moving := ResolveSource("https://github.com/example/repo/tree/main/skills/foo")
+	if moving.Pinned || !strings.Contains(moving.Warning, "moving ref") {
+		t.Fatalf("unexpected moving resolution: %#v", moving)
+	}
+}
+
+func TestVerifyWarnsForMovingRefs(t *testing.T) {
+	temp := t.TempDir()
+	registry := filepath.Join(temp, "packs")
+	if err := os.MkdirAll(registry, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	pack := Pack{
+		ID:          "moving",
+		Name:        "Moving",
+		Version:     "0.1.0",
+		Description: "Moving refs",
+		Skills:      CapabilityRefs{{ID: "moving-skill", Source: "https://github.com/example/repo/tree/main/skills/foo"}},
+	}
+	writeTestPack(t, registry, pack)
+	var output strings.Builder
+	if err := Verify(registry, "moving", &output); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(output.String(), "moving ref") {
+		t.Fatalf("expected moving ref warning, got %s", output.String())
+	}
+}
+
 func TestRegistryConfigRoundTrip(t *testing.T) {
 	home := t.TempDir()
 	if err := RegistryAdd(home, "local", "/tmp/registry"); err != nil {
