@@ -211,6 +211,32 @@ type SourceResolution struct {
 	Warning  string
 }
 
+type TrustPolicy struct {
+	AllowSources        []string `json:"allowSources,omitempty"`
+	DenySources         []string `json:"denySources,omitempty"`
+	RequirePinnedRefs   bool     `json:"requirePinnedRefs,omitempty"`
+	AllowNativeCommands bool     `json:"allowNativeCommands,omitempty"`
+}
+
+type RegistryIndex struct {
+	GeneratedAt string       `json:"generatedAt"`
+	Packs       []IndexEntry `json:"packs"`
+}
+
+type IndexEntry struct {
+	ID           string   `json:"id"`
+	Name         string   `json:"name"`
+	Version      string   `json:"version"`
+	Description  string   `json:"description"`
+	Tags         []string `json:"tags,omitempty"`
+	Categories   []string `json:"categories,omitempty"`
+	Tools        []string `json:"tools,omitempty"`
+	Scope        []string `json:"scope,omitempty"`
+	Skills       []string `json:"skills,omitempty"`
+	Plugins      []string `json:"plugins,omitempty"`
+	Capabilities int      `json:"capabilities"`
+}
+
 type RegistryConfig struct {
 	Registries map[string]string `json:"registries"`
 }
@@ -697,8 +723,8 @@ func Update(home string, all bool, out io.Writer) error {
 }
 
 func Outdated(target string, out io.Writer) error {
-	receiptsDir := filepath.Join(expandHome(target), "receipts")
-	entries, err := os.ReadDir(receiptsDir)
+	packsDir := filepath.Join(expandHome(target), "packs")
+	entries, err := os.ReadDir(packsDir)
 	if err != nil {
 		if os.IsNotExist(err) {
 			fmt.Fprintln(out, "No packs installed.")
@@ -706,15 +732,32 @@ func Outdated(target string, out io.Writer) error {
 		}
 		return err
 	}
+	count := 0
 	for _, entry := range entries {
-		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".json") {
+		if !entry.IsDir() {
 			continue
 		}
-		receipt, err := LoadReceipt(filepath.Join(receiptsDir, entry.Name()))
+		lock, err := LoadLockfile(filepath.Join(packsDir, entry.Name(), "agent-pack.lock"))
 		if err != nil {
-			return err
+			fmt.Fprintf(out, "%s\tstatus=missing-lock\n", entry.Name())
+			count++
+			continue
 		}
-		fmt.Fprintf(out, "%s\tinstalled=%s\tstatus=unknown-without-remote-resolution\n", receipt.Pack.ID, receipt.Pack.Version)
+		for _, capability := range lock.Capabilities {
+			current := ResolveSource(capability.Source)
+			status := "current"
+			if current.Warning != "" {
+				status = "unresolved"
+			}
+			if capability.Revision != "" && current.Revision != "" && capability.Revision != current.Revision {
+				status = "outdated"
+			}
+			fmt.Fprintf(out, "%s\t%s\t%s\tlocked=%s\tcurrent=%s\n", lock.Pack, capability.Name, status, capability.Revision, current.Revision)
+			count++
+		}
+	}
+	if count == 0 {
+		fmt.Fprintln(out, "No packs installed.")
 	}
 	return nil
 }
@@ -859,6 +902,236 @@ func ResolveSource(source string) SourceResolution {
 		return resolution
 	}
 	return SourceResolution{Source: source, Kind: "remote", Warning: "remote revision is unresolved; use a pinned commit when possible"}
+}
+
+func LoadLockfile(path string) (Lockfile, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return Lockfile{}, err
+	}
+	var lock Lockfile
+	if err := json.Unmarshal(data, &lock); err != nil {
+		return Lockfile{}, err
+	}
+	return lock, nil
+}
+
+func PolicyCheck(registry, packRef, policyPath string, out io.Writer) error {
+	policy, err := LoadTrustPolicy(policyPath)
+	if err != nil {
+		return err
+	}
+	pack, err := FindPack(registry, packRef)
+	if err != nil {
+		return err
+	}
+	expanded, err := ExpandPack(registry, pack, map[string]bool{})
+	if err != nil {
+		return err
+	}
+	failed := false
+	for _, capability := range expanded.Capabilities {
+		if matchesAny(capability.Source, policy.DenySources) {
+			fmt.Fprintf(out, "FAIL  denied source: %s\n", capability.Source)
+			failed = true
+		}
+		if len(policy.AllowSources) > 0 && !matchesAny(capability.Source, policy.AllowSources) {
+			fmt.Fprintf(out, "FAIL  source not allowed: %s\n", capability.Source)
+			failed = true
+		}
+		resolution := ResolveSource(capability.Source)
+		if policy.RequirePinnedRefs && !resolution.Pinned && !isLocalSource(capability.Source) {
+			fmt.Fprintf(out, "FAIL  source is not pinned: %s\n", capability.Source)
+			failed = true
+		}
+		if capability.Type == "plugin" && capability.Install != nil && capability.Install["command"] != "" && !policy.AllowNativeCommands {
+			fmt.Fprintf(out, "FAIL  native command blocked by policy: %s\n", capability.Name)
+			failed = true
+		}
+	}
+	if failed {
+		return ErrInstallFailed
+	}
+	fmt.Fprintf(out, "OK    %s satisfies policy\n", expanded.ID)
+	return nil
+}
+
+func LoadTrustPolicy(path string) (TrustPolicy, error) {
+	data, err := os.ReadFile(expandHome(path))
+	if err != nil {
+		return TrustPolicy{}, err
+	}
+	var policy TrustPolicy
+	if err := json.Unmarshal(data, &policy); err != nil {
+		return TrustPolicy{}, err
+	}
+	return policy, nil
+}
+
+func matchesAny(value string, patterns []string) bool {
+	for _, pattern := range patterns {
+		pattern = strings.TrimSuffix(pattern, "*")
+		if strings.Contains(value, pattern) || strings.HasPrefix(value, pattern) {
+			return true
+		}
+	}
+	return false
+}
+
+func Licenses(registry, packRef string, out io.Writer) error {
+	pack, err := FindPack(registry, packRef)
+	if err != nil {
+		return err
+	}
+	expanded, err := ExpandPack(registry, pack, map[string]bool{})
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(out, "Pack\t%s\t%s\n", expanded.ID, valueOrUnknown(expanded.License))
+	for _, capability := range expanded.Capabilities {
+		fmt.Fprintf(out, "%s\t%s\t%s\t%s\n", capability.Type, capability.Name, valueOrUnknown(capability.License), capability.Source)
+	}
+	return nil
+}
+
+func Attribution(registry, packRef string, out io.Writer) error {
+	pack, err := FindPack(registry, packRef)
+	if err != nil {
+		return err
+	}
+	expanded, err := ExpandPack(registry, pack, map[string]bool{})
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(out, "# Attribution for %s\n\n", expanded.Name)
+	for _, capability := range expanded.Capabilities {
+		fmt.Fprintf(out, "- %s (%s): %s\n", capability.Name, capability.Type, capability.Source)
+	}
+	return nil
+}
+
+func GenerateIndex(registry, outputPath string, out io.Writer) error {
+	packs, err := LoadPacks(registry)
+	if err != nil {
+		return err
+	}
+	index := RegistryIndex{GeneratedAt: time.Now().UTC().Format(time.RFC3339Nano)}
+	for _, pack := range packs {
+		expanded, err := ExpandPack(registry, pack, map[string]bool{})
+		if err != nil {
+			return err
+		}
+		entry := IndexEntry{ID: pack.ID, Name: pack.Name, Version: pack.Version, Description: pack.Description, Tags: pack.Tags, Categories: pack.Categories, Tools: pack.Tools, Scope: pack.Scope, Skills: pack.Skills.IDs(), Plugins: pack.Plugins.IDs(), Capabilities: len(expanded.Capabilities)}
+		index.Packs = append(index.Packs, entry)
+	}
+	if outputPath == "" {
+		outputPath = filepath.Join(registryRoot(registry), "index.json")
+	}
+	if err := writeJSON(outputPath, index); err != nil {
+		return err
+	}
+	fmt.Fprintf(out, "Wrote %s\n", outputPath)
+	return nil
+}
+
+func PackDiff(registry, target, packRef string, out io.Writer) error {
+	pack, err := FindPack(registry, packRef)
+	if err != nil {
+		return err
+	}
+	expanded, err := ExpandPack(registry, pack, map[string]bool{})
+	if err != nil {
+		return err
+	}
+	lock, err := LoadLockfile(filepath.Join(expandHome(target), "packs", expanded.ID, "agent-pack.lock"))
+	if err != nil {
+		return err
+	}
+	diffCount := 0
+	current := map[string]Capability{}
+	for _, capability := range expanded.Capabilities {
+		current[capability.Type+":"+capability.Name] = capability
+	}
+	seen := map[string]bool{}
+	for _, entry := range lock.Capabilities {
+		key := entry.Type + ":" + entry.Name
+		seen[key] = true
+		capability, ok := current[key]
+		if !ok {
+			fmt.Fprintf(out, "removed\t%s\n", key)
+			diffCount++
+			continue
+		}
+		if capability.Source != entry.Source {
+			fmt.Fprintf(out, "changed\t%s\t%s -> %s\n", key, entry.Source, capability.Source)
+			diffCount++
+		}
+	}
+	for key := range current {
+		if !seen[key] {
+			fmt.Fprintf(out, "added\t%s\n", key)
+			diffCount++
+		}
+	}
+	if diffCount == 0 {
+		fmt.Fprintf(out, "No differences for %s.\n", expanded.ID)
+	}
+	return nil
+}
+
+func CachePrune(home string, clean bool, out io.Writer) error {
+	base := expandHome(home)
+	dirs := []string{"cache", "locks"}
+	if clean {
+		dirs = append(dirs, "sources")
+	}
+	for _, dir := range dirs {
+		path := filepath.Join(base, dir)
+		if err := os.RemoveAll(path); err != nil {
+			return err
+		}
+		if err := os.MkdirAll(path, 0o755); err != nil {
+			return err
+		}
+		fmt.Fprintf(out, "cleaned\t%s\n", path)
+	}
+	return nil
+}
+
+func Compatibility(registry, packRef, agent string, out io.Writer) error {
+	pack, err := FindPack(registry, packRef)
+	if err != nil {
+		return err
+	}
+	ok := true
+	if len(pack.Tools) > 0 && !stringIn(agent, pack.Tools) {
+		fmt.Fprintf(out, "WARN  %s not listed in pack tools: %s\n", agent, strings.Join(pack.Tools, ", "))
+		ok = false
+	}
+	if _, exists := TargetMatrix[agent]; !exists {
+		fmt.Fprintf(out, "FAIL  unsupported target tool: %s\n", agent)
+		return ErrInstallFailed
+	}
+	if ok {
+		fmt.Fprintf(out, "OK    %s is compatible with %s\n", pack.ID, agent)
+	}
+	return nil
+}
+
+func valueOrUnknown(value string) string {
+	if value == "" {
+		return "unknown"
+	}
+	return value
+}
+
+func stringIn(value string, values []string) bool {
+	for _, candidate := range values {
+		if candidate == value {
+			return true
+		}
+	}
+	return false
 }
 
 func ValidatePath(path string, out io.Writer) error {

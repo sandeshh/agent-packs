@@ -1,0 +1,108 @@
+{
+  "generatedAt": "2026-06-05T18:56:58.593599Z",
+  "packs": [
+    {
+      "id": "eng-leader",
+      "name": "Engineering Leader Pack",
+      "version": "0.1.0",
+      "description": "A leadership-focused Agent Pack for engineering strategy, planning, quality gates, architecture decisions, delivery health, launch readiness, security risk, and performance health.",
+      "tags": [
+        "engineering-leadership",
+        "strategy",
+        "planning",
+        "quality",
+        "architecture",
+        "delivery"
+      ],
+      "categories": [
+        "engineering-leadership",
+        "planning"
+      ],
+      "tools": [
+        "codex",
+        "claude-code"
+      ],
+      "scope": [
+        "global",
+        "project"
+      ],
+      "skills": [
+        "eng-leader-strategy",
+        "eng-leader-planning",
+        "eng-leader-quality-review",
+        "eng-leader-architecture-adrs",
+        "eng-leader-delivery-ops",
+        "eng-leader-launch-readiness",
+        "eng-leader-security-risk",
+        "eng-leader-performance-health"
+      ],
+      "plugins": [
+        "eng-leader-workflows",
+        "github-pr-inspection"
+      ],
+      "capabilities": 10
+    },
+    {
+      "id": "frontend-engineer",
+      "name": "Frontend Engineer Pack",
+      "version": "0.1.0",
+      "description": "A starter pack for coding agents building polished frontend applications.",
+      "tags": [
+        "frontend",
+        "ui",
+        "react",
+        "design"
+      ],
+      "categories": [
+        "frontend",
+        "engineering"
+      ],
+      "tools": [
+        "codex",
+        "claude-code"
+      ],
+      "scope": [
+        "global",
+        "project"
+      ],
+      "skills": [
+        "frontend-implementation-guidance"
+      ],
+      "plugins": [
+        "browser-verification-workflow"
+      ],
+      "capabilities": 2
+    },
+    {
+      "id": "pr-review",
+      "name": "PR Review Pack",
+      "version": "0.1.0",
+      "description": "A starter pack for coding agents reviewing pull requests and identifying regressions.",
+      "tags": [
+        "github",
+        "review",
+        "ci",
+        "quality"
+      ],
+      "categories": [
+        "code-review",
+        "engineering"
+      ],
+      "tools": [
+        "codex",
+        "claude-code"
+      ],
+      "scope": [
+        "global",
+        "project"
+      ],
+      "skills": [
+        "code-review-workflow"
+      ],
+      "plugins": [
+        "github-pr-inspection"
+      ],
+      "capabilities": 2
+    }
+  ]
+}

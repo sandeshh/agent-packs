@@ -45,6 +45,18 @@ func main() {
 		err = runUpdate(defaultTarget, os.Args[2:])
 	case "cache":
 		err = runCache(defaultTarget, os.Args[2:])
+	case "policy":
+		err = runPolicy(registry, os.Args[2:])
+	case "licenses":
+		err = runLicenses(registry, os.Args[2:])
+	case "attribution":
+		err = runAttribution(registry, os.Args[2:])
+	case "index":
+		err = runIndex(registry, os.Args[2:])
+	case "diff":
+		err = runDiff(registry, defaultTarget, os.Args[2:])
+	case "compat":
+		err = runCompat(registry, os.Args[2:])
 	case "scan":
 		err = runScan(os.Args[2:])
 	case "import":
@@ -204,6 +216,15 @@ func runUpdate(defaultTarget string, args []string) error {
 }
 
 func runCache(defaultTarget string, args []string) error {
+	if len(args) > 0 && (args[0] == "prune" || args[0] == "clean") {
+		flags := flag.NewFlagSet("cache "+args[0], flag.ContinueOnError)
+		flags.SetOutput(os.Stderr)
+		target := flags.String("target", defaultTarget, "installation target directory")
+		if err := flags.Parse(normalizeTargetArgs(args[1:])); err != nil {
+			return err
+		}
+		return agentpacks.CachePrune(*target, args[0] == "clean", os.Stdout)
+	}
 	flags := flag.NewFlagSet("cache", flag.ContinueOnError)
 	flags.SetOutput(os.Stderr)
 	target := flags.String("target", defaultTarget, "installation target directory")
@@ -211,6 +232,68 @@ func runCache(defaultTarget string, args []string) error {
 		return err
 	}
 	return agentpacks.CacheInfo(*target, os.Stdout)
+}
+
+func runPolicy(registry string, args []string) error {
+	if len(args) != 3 || args[0] != "check" {
+		return fmt.Errorf("usage: agent-packs policy check <pack-id> <policy.json>")
+	}
+	return agentpacks.PolicyCheck(registry, args[1], args[2], os.Stdout)
+}
+
+func runLicenses(registry string, args []string) error {
+	if len(args) != 1 {
+		return fmt.Errorf("usage: agent-packs licenses <pack-id>")
+	}
+	return agentpacks.Licenses(registry, args[0], os.Stdout)
+}
+
+func runAttribution(registry string, args []string) error {
+	if len(args) != 1 {
+		return fmt.Errorf("usage: agent-packs attribution <pack-id>")
+	}
+	return agentpacks.Attribution(registry, args[0], os.Stdout)
+}
+
+func runIndex(registry string, args []string) error {
+	flags := flag.NewFlagSet("index", flag.ContinueOnError)
+	flags.SetOutput(os.Stderr)
+	output := flags.String("output", "", "output index path")
+	if err := flags.Parse(args); err != nil {
+		return err
+	}
+	if len(flags.Args()) != 0 {
+		return fmt.Errorf("usage: agent-packs index [--output path]")
+	}
+	return agentpacks.GenerateIndex(registry, *output, os.Stdout)
+}
+
+func runDiff(registry, defaultTarget string, args []string) error {
+	flags := flag.NewFlagSet("diff", flag.ContinueOnError)
+	flags.SetOutput(os.Stderr)
+	target := flags.String("target", defaultTarget, "installation target directory")
+	if err := flags.Parse(normalizeTargetArgs(args)); err != nil {
+		return err
+	}
+	remaining := flags.Args()
+	if len(remaining) != 1 {
+		return fmt.Errorf("usage: agent-packs diff <pack-id> [--target dir]")
+	}
+	return agentpacks.PackDiff(registry, *target, remaining[0], os.Stdout)
+}
+
+func runCompat(registry string, args []string) error {
+	flags := flag.NewFlagSet("compat", flag.ContinueOnError)
+	flags.SetOutput(os.Stderr)
+	agent := flags.String("agent", "generic", "target agent/tool")
+	if err := flags.Parse(normalizeAgentArgs(args)); err != nil {
+		return err
+	}
+	remaining := flags.Args()
+	if len(remaining) != 1 {
+		return fmt.Errorf("usage: agent-packs compat <pack-id> [--agent tool]")
+	}
+	return agentpacks.Compatibility(registry, remaining[0], *agent, os.Stdout)
 }
 
 func runScan(args []string) error {
@@ -319,6 +402,28 @@ func normalizeInstallArgs(args []string) []string {
 	return append(flags, positionals...)
 }
 
+func normalizeAgentArgs(args []string) []string {
+	flags := []string{}
+	positionals := []string{}
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		if arg == "--agent" {
+			flags = append(flags, arg)
+			if i+1 < len(args) {
+				flags = append(flags, args[i+1])
+				i++
+			}
+			continue
+		}
+		if strings.HasPrefix(arg, "--agent=") {
+			flags = append(flags, arg)
+			continue
+		}
+		positionals = append(positionals, arg)
+	}
+	return append(flags, positionals...)
+}
+
 func normalizeTargetArgs(args []string) []string {
 	flags := []string{}
 	positionals := []string{}
@@ -365,6 +470,11 @@ func usage() {
 	fmt.Fprintln(os.Stderr, "  agent-packs install <pack-id|registry/pack-id> [--target dir] [--agent tool|--target-tool tool] [--only all|skills|plugins] [--mode reference|symlink|copy|native] [--on-conflict skip|overwrite|backup] [--project dir|--global] [--dry-run] [--execute-plugins]")
 	fmt.Fprintln(os.Stderr, "  agent-packs list [--target dir]")
 	fmt.Fprintln(os.Stderr, "  agent-packs update|outdated|cache ...")
+	fmt.Fprintln(os.Stderr, "  agent-packs policy check <pack-id> <policy.json>")
+	fmt.Fprintln(os.Stderr, "  agent-packs licenses|attribution|resolve <pack-id>")
+	fmt.Fprintln(os.Stderr, "  agent-packs index [--output path]")
+	fmt.Fprintln(os.Stderr, "  agent-packs diff <pack-id> [--target dir]")
+	fmt.Fprintln(os.Stderr, "  agent-packs compat <pack-id> [--agent tool]")
 	fmt.Fprintln(os.Stderr, "  agent-packs scan [path]")
 	fmt.Fprintln(os.Stderr, "  agent-packs import <skills-dir> [--target dir]")
 	fmt.Fprintln(os.Stderr, "  agent-packs lint|verify|resolve <pack-id>")

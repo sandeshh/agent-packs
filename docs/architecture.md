@@ -35,6 +35,13 @@ Implemented commands:
 - `agent-packs lint <pack>`
 - `agent-packs verify <pack>`
 - `agent-packs resolve <pack>`
+- `agent-packs policy check <pack> <policy.json>`
+- `agent-packs licenses <pack>`
+- `agent-packs attribution <pack>`
+- `agent-packs index [--output path]`
+- `agent-packs diff <pack>`
+- `agent-packs compat <pack>`
+- `agent-packs cache prune|clean`
 
 ## Install Experience
 
@@ -50,6 +57,10 @@ Bootstrap fallback:
 ```sh
 curl -fsSL https://agentpacks.dev/install.sh | sh
 ```
+
+## Catalog And CI
+
+The repository includes a GitHub Actions workflow for Go/Python tests, registry validation, pack verification, and index generation. `docs/catalog.html` can render `registry/index.json` as a lightweight static catalog for GitHub Pages.
 
 ## Security Posture
 

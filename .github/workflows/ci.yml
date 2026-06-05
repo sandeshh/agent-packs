@@ -1,0 +1,39 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - name: Go tests
+        run: go test ./...
+        working-directory: cli
+      - name: Build CLI
+        run: go build -o bin/agent-packs ./cmd/agent-packs
+        working-directory: cli
+      - name: Python schema and integration tests
+        run: python3 -m unittest discover -s tests
+      - name: Validate registry
+        run: |
+          cli/bin/agent-packs validate registry/schemas/examples
+          cli/bin/agent-packs validate registry/packs
+          cli/bin/agent-packs validate registry/skills
+          cli/bin/agent-packs validate registry/plugins
+      - name: Verify registry packs
+        run: |
+          cli/bin/agent-packs verify frontend-engineer
+          cli/bin/agent-packs verify pr-review
+          cli/bin/agent-packs verify eng-leader
+      - name: Generate registry index
+        run: cli/bin/agent-packs index --output registry/index.json

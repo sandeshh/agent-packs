@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Agent Packs Catalog</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 2rem; color: #0f172a; }
+    input { width: 100%; max-width: 560px; padding: .7rem; margin: 1rem 0; }
+    article { border: 1px solid #cbd5e1; border-radius: 8px; padding: 1rem; margin: 1rem 0; }
+    code { background: #f1f5f9; padding: .15rem .35rem; border-radius: 4px; }
+  </style>
+</head>
+<body>
+  <h1>Agent Packs Catalog</h1>
+  <input id="q" placeholder="Search packs, tags, tools...">
+  <main id="packs"></main>
+  <script>
+    const packsEl = document.getElementById('packs');
+    const q = document.getElementById('q');
+    let packs = [];
+    function render() {
+      const query = q.value.toLowerCase();
+      packsEl.innerHTML = packs.filter(p => JSON.stringify(p).toLowerCase().includes(query)).map(p => `
+        <article>
+          <h2>${p.name} <code>${p.id}</code></h2>
+          <p>${p.description}</p>
+          <p><strong>Version:</strong> ${p.version}</p>
+          <p><strong>Tags:</strong> ${(p.tags || []).join(', ')}</p>
+          <p><strong>Tools:</strong> ${(p.tools || []).join(', ')}</p>
+          <p><code>agent-packs install ${p.id}</code></p>
+        </article>`).join('');
+    }
+    fetch('../registry/index.json').then(r => r.json()).then(data => { packs = data.packs || []; render(); }).catch(() => { packsEl.textContent = 'Run agent-packs index --output registry/index.json first.'; });
+    q.addEventListener('input', render);
+  </script>
+</body>
+</html>

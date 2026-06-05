@@ -47,6 +47,13 @@ cli/bin/agent-packs import ~/.codex/skills
 cli/bin/agent-packs lint eng-leader
 cli/bin/agent-packs verify eng-leader
 cli/bin/agent-packs resolve eng-leader
+cli/bin/agent-packs policy check eng-leader policy.json
+cli/bin/agent-packs licenses eng-leader
+cli/bin/agent-packs attribution eng-leader
+cli/bin/agent-packs index --output registry/index.json
+cli/bin/agent-packs diff eng-leader
+cli/bin/agent-packs compat eng-leader --agent codex
+cli/bin/agent-packs cache prune
 cli/bin/agent-packs list --target ./sandbox
 cli/bin/agent-packs uninstall frontend-engineer --target ./sandbox
 cli/bin/agent-packs doctor
@@ -98,6 +105,12 @@ Agent Packs supports a basic package-manager lifecycle:
 - `lint <pack>`: validates pack metadata.
 - `verify <pack>`: expands a pack, checks duplicate/missing capability sources, and warns about moving remote refs.
 - `resolve <pack>`: classifies sources as local, GitHub tree, pinned, or moving refs.
+- `policy check <pack> <policy.json>`: enforces allow/deny source rules, pinned refs, and native-command policy.
+- `licenses <pack>` and `attribution <pack>`: report license and source attribution.
+- `index [--output path]`: generates a searchable registry index.
+- `diff <pack>`: compares the installed lockfile with the current registry pack.
+- `compat <pack> --agent <tool>`: checks tool compatibility metadata.
+- `cache prune|clean`: removes cached state; `clean` also removes imported sources.
 
 ## Remote Registries
 
