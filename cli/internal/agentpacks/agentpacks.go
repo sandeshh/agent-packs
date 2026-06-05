@@ -55,6 +55,36 @@ type Integrity struct {
 	Signature string `json:"signature,omitempty"`
 }
 
+type SkillManifest struct {
+	Name          string            `json:"name"`
+	Description   string            `json:"description"`
+	License       string            `json:"license,omitempty"`
+	Compatibility string            `json:"compatibility,omitempty"`
+	AllowedTools  string            `json:"allowed-tools,omitempty"`
+	Metadata      map[string]string `json:"metadata,omitempty"`
+	Body          string            `json:"-"`
+}
+
+type PluginManifest struct {
+	Name           string         `json:"name"`
+	DisplayName    string         `json:"displayName,omitempty"`
+	Version        string         `json:"version,omitempty"`
+	Description    string         `json:"description,omitempty"`
+	Author         map[string]any `json:"author,omitempty"`
+	Homepage       string         `json:"homepage,omitempty"`
+	Repository     string         `json:"repository,omitempty"`
+	License        string         `json:"license,omitempty"`
+	Keywords       []string       `json:"keywords,omitempty"`
+	DefaultEnabled *bool          `json:"defaultEnabled,omitempty"`
+	Skills         any            `json:"skills,omitempty"`
+	Commands       any            `json:"commands,omitempty"`
+	Agents         any            `json:"agents,omitempty"`
+	Hooks          any            `json:"hooks,omitempty"`
+	MCPServers     any            `json:"mcpServers,omitempty"`
+	LSPServers     any            `json:"lspServers,omitempty"`
+	Experimental   map[string]any `json:"experimental,omitempty"`
+}
+
 type Plan struct {
 	Pack         string     `json:"pack"`
 	Version      string     `json:"version"`
@@ -491,7 +521,7 @@ func ValidatePath(path string, out io.Writer) error {
 			if err != nil {
 				return err
 			}
-			if !d.IsDir() && strings.HasSuffix(p, ".json") {
+			if !d.IsDir() && (strings.HasSuffix(p, ".json") || filepath.Base(p) == "SKILL.md") {
 				paths = append(paths, p)
 			}
 			return nil
@@ -505,13 +535,7 @@ func ValidatePath(path string, out io.Writer) error {
 	failed := false
 	for _, p := range paths {
 		if isCapabilityManifestPath(p) {
-			capability, err := LoadCapability(p)
-			if err != nil {
-				fmt.Fprintf(out, "FAIL  %s: %s\n", p, err)
-				failed = true
-				continue
-			}
-			errors := ValidateCapability(capability, "capability")
+			errors := ValidateCapabilityManifestPath(p)
 			if len(errors) > 0 {
 				fmt.Fprintf(out, "FAIL  %s\n", p)
 				for _, msg := range errors {
@@ -548,34 +572,97 @@ func ValidatePath(path string, out io.Writer) error {
 
 func FindCapability(registry, kind, id string) (Capability, error) {
 	root := registryRoot(registry)
-	path := filepath.Join(root, kind, id+".json")
-	capability, err := LoadCapability(path)
-	if err != nil {
-		return Capability{}, fmt.Errorf("%s capability not found: %s", strings.TrimSuffix(kind, "s"), id)
+	if kind == "skills" {
+		path := filepath.Join(root, kind, id, "SKILL.md")
+		manifest, err := LoadSkillManifest(path)
+		if err != nil {
+			return Capability{}, fmt.Errorf("skill capability not found or invalid: %s", id)
+		}
+		return SkillCapability(id, path, manifest), nil
 	}
-	return capability, nil
+	if kind == "plugins" {
+		path := filepath.Join(root, kind, id, ".claude-plugin", "plugin.json")
+		manifest, err := LoadPluginManifest(path)
+		if err != nil {
+			return Capability{}, fmt.Errorf("plugin capability not found or invalid: %s", id)
+		}
+		return PluginCapability(id, filepath.Dir(filepath.Dir(path)), manifest), nil
+	}
+	return Capability{}, fmt.Errorf("unsupported capability kind: %s", kind)
 }
 
-func LoadCapability(path string) (Capability, error) {
+func SkillCapability(id, path string, manifest SkillManifest) Capability {
+	return Capability{Type: "skill", Name: manifest.Name, Source: filepath.Dir(path), Format: "agent-skill", Entry: "SKILL.md", License: manifest.License, Version: manifest.Metadata["agentpacks.version"]}
+}
+
+func PluginCapability(id, root string, manifest PluginManifest) Capability {
+	name := manifest.DisplayName
+	if name == "" {
+		name = manifest.Name
+	}
+	return Capability{Type: "plugin", Name: name, Source: root, Format: "anthropic-plugin", Entry: ".claude-plugin/plugin.json", Version: manifest.Version, Homepage: manifest.Homepage, Repository: manifest.Repository, License: manifest.License, Install: map[string]string{"method": "manual", "package": manifest.Name}}
+}
+
+func LoadSkillManifest(path string) (SkillManifest, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return Capability{}, err
+		return SkillManifest{}, err
 	}
-	var capability Capability
-	if err := json.Unmarshal(data, &capability); err != nil {
-		return Capability{}, err
+	frontmatter, body, err := parseSkillMarkdown(string(data))
+	if err != nil {
+		return SkillManifest{}, err
 	}
-	return capability, nil
+	manifest := SkillManifest{Metadata: map[string]string{}, Body: body}
+	currentMap := ""
+	for _, raw := range strings.Split(frontmatter, "\n") {
+		line := strings.TrimRight(raw, " 	")
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		if strings.HasPrefix(line, "  ") && currentMap == "metadata" {
+			key, value, ok := splitYAMLScalar(strings.TrimSpace(line))
+			if ok {
+				manifest.Metadata[key] = value
+			}
+			continue
+		}
+		currentMap = ""
+		key, value, ok := splitYAMLScalar(line)
+		if !ok {
+			continue
+		}
+		switch key {
+		case "name":
+			manifest.Name = value
+		case "description":
+			manifest.Description = value
+		case "license":
+			manifest.License = value
+		case "compatibility":
+			manifest.Compatibility = value
+		case "allowed-tools":
+			manifest.AllowedTools = value
+		case "metadata":
+			currentMap = "metadata"
+		}
+	}
+	return manifest, nil
+}
+
+func LoadPluginManifest(path string) (PluginManifest, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return PluginManifest{}, err
+	}
+	var manifest PluginManifest
+	if err := json.Unmarshal(data, &manifest); err != nil {
+		return PluginManifest{}, err
+	}
+	return manifest, nil
 }
 
 func isCapabilityManifestPath(path string) bool {
-	parts := strings.Split(filepath.ToSlash(path), "/")
-	for _, part := range parts {
-		if part == "skills" || part == "plugins" {
-			return true
-		}
-	}
-	return false
+	return strings.HasSuffix(filepath.ToSlash(path), "/SKILL.md") || strings.HasSuffix(filepath.ToSlash(path), "/.claude-plugin/plugin.json")
 }
 
 func registryRoot(registry string) string {
@@ -590,6 +677,61 @@ func registryRoot(registry string) string {
 		return filepath.Join(registry, "registry")
 	}
 	return filepath.Dir(registry)
+}
+
+func ValidateCapabilityManifestPath(path string) []string {
+	if strings.HasSuffix(filepath.ToSlash(path), "/SKILL.md") {
+		manifest, err := LoadSkillManifest(path)
+		if err != nil {
+			return []string{err.Error()}
+		}
+		return ValidateSkillManifest(filepath.Base(filepath.Dir(path)), manifest)
+	}
+	if strings.HasSuffix(filepath.ToSlash(path), "/.claude-plugin/plugin.json") {
+		manifest, err := LoadPluginManifest(path)
+		if err != nil {
+			return []string{err.Error()}
+		}
+		return ValidatePluginManifest(manifest)
+	}
+	return []string{"unsupported capability manifest path"}
+}
+
+func ValidateSkillManifest(directoryName string, manifest SkillManifest) []string {
+	var errs []string
+	if !validSkillName(manifest.Name) {
+		errs = append(errs, "name must be 1-64 lowercase letters, numbers, and hyphens; no leading/trailing/consecutive hyphens")
+	}
+	if manifest.Name != "" && manifest.Name != directoryName {
+		errs = append(errs, "name must match parent directory name")
+	}
+	if len(manifest.Description) < 1 || len(manifest.Description) > 1024 {
+		errs = append(errs, "description must be 1-1024 characters")
+	}
+	if manifest.Compatibility != "" && len(manifest.Compatibility) > 500 {
+		errs = append(errs, "compatibility must be 1-500 characters when provided")
+	}
+	return errs
+}
+
+func ValidatePluginManifest(manifest PluginManifest) []string {
+	var errs []string
+	if !validPluginName(manifest.Name) {
+		errs = append(errs, "name is required and must not contain spaces or path separators")
+	}
+	if manifest.Version != "" && !regexp.MustCompile(`^[0-9]+\.[0-9]+\.[0-9]+`).MatchString(manifest.Version) {
+		errs = append(errs, "version should be semantic version format")
+	}
+	pathFields := map[string]any{"skills": manifest.Skills, "commands": manifest.Commands, "agents": manifest.Agents, "hooks": manifest.Hooks}
+	for field, value := range pathFields {
+		errs = append(errs, validatePluginPathField(field, value)...)
+	}
+	if manifest.Experimental != nil {
+		for field, value := range manifest.Experimental {
+			errs = append(errs, validatePluginPathField("experimental."+field, value)...)
+		}
+	}
+	return errs
 }
 
 func ValidateCapability(capability Capability, prefix string) []string {
@@ -1000,6 +1142,80 @@ func slugify(value string) string {
 		return "capability"
 	}
 	return slug
+}
+
+func parseSkillMarkdown(content string) (string, string, error) {
+	if !strings.HasPrefix(content, "---\n") && content != "---" {
+		return "", "", fmt.Errorf("SKILL.md must start with YAML frontmatter")
+	}
+	parts := strings.SplitN(content, "\n---", 2)
+	if len(parts) != 2 {
+		return "", "", fmt.Errorf("SKILL.md frontmatter must be closed with ---")
+	}
+	frontmatter := strings.TrimPrefix(parts[0], "---\n")
+	body := strings.TrimPrefix(parts[1], "\n")
+	return frontmatter, body, nil
+}
+
+func splitYAMLScalar(line string) (string, string, bool) {
+	parts := strings.SplitN(line, ":", 2)
+	if len(parts) != 2 {
+		return "", "", false
+	}
+	key := strings.TrimSpace(parts[0])
+	value := strings.TrimSpace(parts[1])
+	value = strings.Trim(value, `"`)
+	return key, value, key != ""
+}
+
+func validSkillName(name string) bool {
+	if len(name) < 1 || len(name) > 64 {
+		return false
+	}
+	if strings.Contains(name, "--") {
+		return false
+	}
+	return regexp.MustCompile(`^[a-z0-9][a-z0-9-]*[a-z0-9]$`).MatchString(name)
+}
+
+func validPluginName(name string) bool {
+	return name != "" && !strings.ContainsAny(name, "/\\ ")
+}
+
+func validatePluginPathField(field string, value any) []string {
+	if value == nil {
+		return nil
+	}
+	var errs []string
+	check := func(path string) {
+		if path == "" {
+			errs = append(errs, field+" path must not be empty")
+			return
+		}
+		if strings.Contains(path, "..") || strings.HasPrefix(path, "/") {
+			errs = append(errs, field+" path must stay within plugin root")
+		}
+		if !strings.HasPrefix(path, "./") {
+			errs = append(errs, field+" path should be relative and start with ./")
+		}
+	}
+	switch typed := value.(type) {
+	case string:
+		check(typed)
+	case []any:
+		for _, item := range typed {
+			if s, ok := item.(string); ok {
+				check(s)
+			} else {
+				errs = append(errs, field+" entries must be strings")
+			}
+		}
+	case map[string]any:
+		// Inline component objects are valid for hooks, MCP, LSP, etc.
+	default:
+		errs = append(errs, field+" must be a string, array, or object")
+	}
+	return errs
 }
 
 func expandHome(path string) string {

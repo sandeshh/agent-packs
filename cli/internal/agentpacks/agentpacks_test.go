@@ -120,8 +120,8 @@ func TestExpandPackIncludesRegistrySkillsAndPlugins(t *testing.T) {
 	}
 	pack := Pack{ID: "referenced", Name: "Referenced", Version: "0.1.0", Description: "Referenced pack", Skills: []string{"review"}, Plugins: []string{"browser"}}
 	writeTestPack(t, filepath.Join(registry, "packs"), pack)
-	writeTestCapability(t, filepath.Join(registry, "skills"), "review", Capability{Type: "skill", Name: "Review Skill", Source: "/tmp/review", Format: "agent-skill", Entry: "SKILL.md"})
-	writeTestCapability(t, filepath.Join(registry, "plugins"), "browser", Capability{Type: "tool", Name: "Browser Tool", Source: "browser-placeholder"})
+	writeTestSkill(t, filepath.Join(registry, "skills"), "review")
+	writeTestPlugin(t, filepath.Join(registry, "plugins"), "browser")
 
 	loaded, err := FindPack(filepath.Join(registry, "packs"), "referenced")
 	if err != nil {
@@ -134,7 +134,7 @@ func TestExpandPackIncludesRegistrySkillsAndPlugins(t *testing.T) {
 	if len(expanded.Capabilities) != 2 {
 		t.Fatalf("expected 2 referenced capabilities, got %d", len(expanded.Capabilities))
 	}
-	if expanded.Capabilities[0].Name != "Review Skill" || expanded.Capabilities[1].Name != "Browser Tool" {
+	if expanded.Capabilities[0].Name != "review" || expanded.Capabilities[1].Name != "Browser Tool" {
 		t.Fatalf("unexpected capabilities: %#v", expanded.Capabilities)
 	}
 }
@@ -233,6 +233,34 @@ func writeTestPack(t *testing.T, registry string, pack Pack) {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(registry, pack.ID+".json"), append(data, '\n'), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func writeTestSkill(t *testing.T, dir, id string) {
+	t.Helper()
+	skillDir := filepath.Join(dir, id)
+	if err := os.MkdirAll(skillDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	content := "---\nname: " + id + "\ndescription: Review code changes and identify bugs. Use when reviewing pull requests or diffs.\n---\n\n# Review\n"
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func writeTestPlugin(t *testing.T, dir, id string) {
+	t.Helper()
+	pluginDir := filepath.Join(dir, id, ".claude-plugin")
+	if err := os.MkdirAll(pluginDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	manifest := PluginManifest{Name: id, DisplayName: "Browser Tool", Version: "0.1.0", Description: "Test plugin", Skills: "./skills"}
+	data, err := json.MarshalIndent(manifest, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(pluginDir, "plugin.json"), append(data, '\n'), 0o644); err != nil {
 		t.Fatal(err)
 	}
 }

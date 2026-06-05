@@ -117,7 +117,9 @@ Packs can include other packs with the `packs` field. They can also include reus
 }
 ```
 
-Reusable capability manifests live under `registry/skills/<id>.json` and `registry/plugins/<id>.json`. A pack references them by ID without the `.json` suffix.
+Reusable skills live as Agent Skills at `registry/skills/<id>/SKILL.md`. Reusable plugins live as Claude Code plugins at `registry/plugins/<id>/.claude-plugin/plugin.json`. A pack references them by ID.
+
+Agent Skills follow the Agent Skills specification: a skill directory with required `SKILL.md` frontmatter fields `name` and `description`. Claude Code plugins follow the plugin manifest layout with `.claude-plugin/plugin.json` and a required `name` field.
 
 ## Examples
 

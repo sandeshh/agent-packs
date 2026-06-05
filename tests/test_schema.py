@@ -194,12 +194,23 @@ class AgentPackSchemaTest(unittest.TestCase):
                 self.assert_valid(load_pack(path))
 
     def test_reusable_capabilities_match_schema(self):
-        capability_paths = sorted(SKILLS_PATH.glob("*.json")) + sorted(PLUGINS_PATH.glob("*.json"))
-        self.assertGreater(len(capability_paths), 0)
+        skill_paths = sorted(SKILLS_PATH.glob("*/SKILL.md"))
+        plugin_paths = sorted(PLUGINS_PATH.glob("*/.claude-plugin/plugin.json"))
+        self.assertGreater(len(skill_paths) + len(plugin_paths), 0)
 
-        for path in capability_paths:
-            with self.subTest(path=path.name):
-                self.assertEqual(validate_capability(load_pack(path), self.schema), [])
+        for path in skill_paths:
+            with self.subTest(path=str(path.relative_to(ROOT))):
+                text = path.read_text(encoding="utf-8")
+                self.assertTrue(text.startswith("---\n"))
+                self.assertIn(f"name: {path.parent.name}", text)
+                self.assertIn("description:", text)
+
+        for path in plugin_paths:
+            with self.subTest(path=str(path.relative_to(ROOT))):
+                manifest = load_pack(path)
+                self.assertIn("name", manifest)
+                self.assertNotIn("/", manifest["name"])
+                self.assertNotIn(" ", manifest["name"])
 
     def test_valid_pack_matches_schema(self):
         self.assert_valid(valid_pack())

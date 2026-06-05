@@ -6,8 +6,8 @@ Agent Packs should feel like Homebrew for agent capabilities while keeping the C
 
 - CLI: Go module under `cli/`.
 - Registry packs: static JSON manifests under `registry/packs/`.
-- Registry skills: reusable skill capability manifests under `registry/skills/`.
-- Registry plugins: reusable plugin/tool capability manifests under `registry/plugins/`.
+- Registry skills: Agent Skills under `registry/skills/<id>/SKILL.md`.
+- Registry plugins: Claude Code plugin directories under `registry/plugins/<id>/.claude-plugin/plugin.json`.
 - Schema: `registry/schemas/agent-pack.schema.json`.
 - Receipts: `<target>/receipts/<pack-id>.json`.
 - Lockfiles: `<target>/packs/<pack-id>/agent-pack.lock`.
