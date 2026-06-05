@@ -5,6 +5,8 @@ Curated, installable capability bundles for AI coding agents.
 Agent Packs bundles public Skills, Plugins, MCP servers, commands, hooks, prompts,
 templates, and composed packs into ready-to-use workflow packs.
 
+![Agent Packs high-level architecture](docs/architecture.svg)
+
 ## Repository Layout
 
 - `cli/`: Go CLI module and source.
