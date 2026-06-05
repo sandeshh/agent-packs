@@ -1,0 +1,15 @@
+{
+  "type": "plugin",
+  "name": "Anthropic Claude Code code-review plugin",
+  "source": "https://github.com/anthropics/claude-plugins-official/tree/main/plugins/code-review",
+  "format": "anthropic-plugin",
+  "entry": ".claude-plugin/plugin.json",
+  "requiresExecution": true,
+  "trust": "official",
+  "install": {
+    "method": "claude-marketplace",
+    "marketplace": "claude-plugins-official",
+    "package": "code-review",
+    "command": "claude plugin install code-review@claude-plugins-official"
+  }
+}

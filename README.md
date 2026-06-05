@@ -8,7 +8,10 @@ templates, and composed packs into ready-to-use workflow packs.
 ## Repository Layout
 
 - `cli/`: Go CLI module and source.
-- `registry/`: pack manifests, JSON Schema, and example manifests.
+- `registry/packs/`: Agent Pack manifests.
+- `registry/skills/`: reusable skill capability manifests.
+- `registry/plugins/`: reusable plugin/tool capability manifests.
+- `registry/schemas/`: JSON Schema and example manifests.
 - `docs/`: architecture notes.
 - `tests/`: Python schema and CLI integration tests.
 
@@ -37,6 +40,8 @@ cli/bin/agent-packs list --target ./sandbox
 cli/bin/agent-packs uninstall frontend-engineer --target ./sandbox
 cli/bin/agent-packs doctor
 cli/bin/agent-packs validate registry/packs
+cli/bin/agent-packs validate registry/skills
+cli/bin/agent-packs validate registry/plugins
 ```
 
 ## Installation Model
@@ -98,7 +103,7 @@ Plugins and skills are declared as entries in `capabilities`. Plugin entries mus
 
 ## Pack Composition
 
-Packs can include other packs with the `packs` field. Included packs are expanded before install.
+Packs can include other packs with the `packs` field. They can also include reusable capability manifests with `skills` and `plugins`. Included packs and referenced capabilities are expanded before install.
 
 ```json
 {
@@ -106,9 +111,13 @@ Packs can include other packs with the `packs` field. Included packs are expande
   "name": "Review Combo Pack",
   "version": "0.1.0",
   "description": "Composes review-oriented packs.",
-  "packs": ["pr-review"]
+  "packs": ["pr-review"],
+  "skills": ["frontend-implementation-guidance"],
+  "plugins": ["browser-verification-workflow"]
 }
 ```
+
+Reusable capability manifests live under `registry/skills/<id>.json` and `registry/plugins/<id>.json`. A pack references them by ID without the `.json` suffix.
 
 ## Examples
 
@@ -118,6 +127,7 @@ Example manifests live in `registry/schemas/examples/`:
 - `full-pack.json`: a complete manifest showing every supported capability type.
 - `real-world-pack.json`: examples based on public Claude Code plugin and Agent Skills repositories.
 - `composed-pack.json`: a pack that includes another pack.
+- `referenced-capabilities-pack.json`: a pack that includes reusable `skills` and `plugins` entries.
 
 ## Tests
 

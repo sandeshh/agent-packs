@@ -10,23 +10,10 @@
     "ci",
     "quality"
   ],
-  "capabilities": [
-    {
-      "type": "skill",
-      "name": "Code review workflow",
-      "source": "public-skill-placeholder",
-      "format": "agent-skill",
-      "entry": "SKILL.md",
-      "targets": [
-        ".claude/skills/",
-        ".codex/skills/",
-        ".agents/skills/"
-      ]
-    },
-    {
-      "type": "tool",
-      "name": "GitHub pull request inspection",
-      "source": "mcp-or-plugin-placeholder"
-    }
+  "skills": [
+    "code-review-workflow"
+  ],
+  "plugins": [
+    "github-pr-inspection"
   ]
 }

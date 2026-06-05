@@ -10,23 +10,10 @@
     "react",
     "design"
   ],
-  "capabilities": [
-    {
-      "type": "skill",
-      "name": "Frontend implementation guidance",
-      "source": "public-skill-placeholder",
-      "format": "agent-skill",
-      "entry": "SKILL.md",
-      "targets": [
-        ".claude/skills/",
-        ".codex/skills/",
-        ".agents/skills/"
-      ]
-    },
-    {
-      "type": "tool",
-      "name": "Browser verification workflow",
-      "source": "mcp-or-plugin-placeholder"
-    }
+  "skills": [
+    "frontend-implementation-guidance"
+  ],
+  "plugins": [
+    "browser-verification-workflow"
   ]
 }

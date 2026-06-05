@@ -8,6 +8,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 SCHEMA_PATH = ROOT / "registry" / "schemas" / "agent-pack.schema.json"
 REGISTRY_PATH = ROOT / "registry" / "packs"
+SKILLS_PATH = ROOT / "registry" / "skills"
+PLUGINS_PATH = ROOT / "registry" / "plugins"
 EXAMPLES_PATH = ROOT / "registry" / "schemas" / "examples"
 
 
@@ -51,6 +53,16 @@ def validate_pack(pack, schema):
         for index, tag in enumerate(pack["tags"]):
             if not isinstance(tag, str):
                 errors.append(f"tags[{index}] must be a string")
+
+    for ref_field in ("packs", "skills", "plugins"):
+        refs = pack.get(ref_field)
+        if refs is not None:
+            if not isinstance(refs, list):
+                errors.append(f"{ref_field} must be an array")
+            else:
+                for ref_index, ref in enumerate(refs):
+                    if not isinstance(ref, str):
+                        errors.append(f"{ref_field}[{ref_index}] must be a string")
 
     capabilities = pack.get("capabilities")
     capability_schema = schema["$defs"]["capability"]
@@ -121,6 +133,19 @@ def validate_pack(pack, schema):
     return errors
 
 
+def validate_capability(capability, schema):
+    return validate_pack(
+        {
+            "id": "capability-wrapper",
+            "name": "Capability Wrapper",
+            "version": "0.1.0",
+            "description": "Wrapper used to validate reusable capability manifests.",
+            "capabilities": [capability],
+        },
+        schema,
+    )
+
+
 def valid_pack():
     return {
         "id": "example-pack",
@@ -167,6 +192,14 @@ class AgentPackSchemaTest(unittest.TestCase):
         for path in example_paths:
             with self.subTest(path=path.name):
                 self.assert_valid(load_pack(path))
+
+    def test_reusable_capabilities_match_schema(self):
+        capability_paths = sorted(SKILLS_PATH.glob("*.json")) + sorted(PLUGINS_PATH.glob("*.json"))
+        self.assertGreater(len(capability_paths), 0)
+
+        for path in capability_paths:
+            with self.subTest(path=path.name):
+                self.assertEqual(validate_capability(load_pack(path), self.schema), [])
 
     def test_valid_pack_matches_schema(self):
         self.assert_valid(valid_pack())

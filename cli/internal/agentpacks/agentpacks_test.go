@@ -106,6 +106,39 @@ func TestExpandPackComposesCapabilities(t *testing.T) {
 	}
 }
 
+func TestExpandPackIncludesRegistrySkillsAndPlugins(t *testing.T) {
+	temp := t.TempDir()
+	registry := filepath.Join(temp, "registry")
+	if err := os.MkdirAll(filepath.Join(registry, "packs"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(registry, "skills"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(registry, "plugins"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	pack := Pack{ID: "referenced", Name: "Referenced", Version: "0.1.0", Description: "Referenced pack", Skills: []string{"review"}, Plugins: []string{"browser"}}
+	writeTestPack(t, filepath.Join(registry, "packs"), pack)
+	writeTestCapability(t, filepath.Join(registry, "skills"), "review", Capability{Type: "skill", Name: "Review Skill", Source: "/tmp/review", Format: "agent-skill", Entry: "SKILL.md"})
+	writeTestCapability(t, filepath.Join(registry, "plugins"), "browser", Capability{Type: "tool", Name: "Browser Tool", Source: "browser-placeholder"})
+
+	loaded, err := FindPack(filepath.Join(registry, "packs"), "referenced")
+	if err != nil {
+		t.Fatal(err)
+	}
+	expanded, err := ExpandPack(filepath.Join(registry, "packs"), loaded, map[string]bool{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(expanded.Capabilities) != 2 {
+		t.Fatalf("expected 2 referenced capabilities, got %d", len(expanded.Capabilities))
+	}
+	if expanded.Capabilities[0].Name != "Review Skill" || expanded.Capabilities[1].Name != "Browser Tool" {
+		t.Fatalf("unexpected capabilities: %#v", expanded.Capabilities)
+	}
+}
+
 func TestRegistryConfigRoundTrip(t *testing.T) {
 	home := t.TempDir()
 	if err := RegistryAdd(home, "local", "/tmp/registry"); err != nil {
@@ -200,6 +233,17 @@ func writeTestPack(t *testing.T, registry string, pack Pack) {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(registry, pack.ID+".json"), append(data, '\n'), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func writeTestCapability(t *testing.T, dir, id string, capability Capability) {
+	t.Helper()
+	data, err := json.MarshalIndent(capability, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, id+".json"), append(data, '\n'), 0o644); err != nil {
 		t.Fatal(err)
 	}
 }

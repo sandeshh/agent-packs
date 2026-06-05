@@ -1,0 +1,18 @@
+{
+  "id": "referenced-capabilities-pack",
+  "name": "Referenced Capabilities Pack",
+  "version": "0.1.0",
+  "description": "A pack that includes reusable skill and plugin manifests from the registry.",
+  "license": "Apache-2.0",
+  "tags": [
+    "references",
+    "skills",
+    "plugins"
+  ],
+  "skills": [
+    "frontend-implementation-guidance"
+  ],
+  "plugins": [
+    "browser-verification-workflow"
+  ]
+}

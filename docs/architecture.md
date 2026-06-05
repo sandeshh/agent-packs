@@ -5,7 +5,9 @@ Agent Packs should feel like Homebrew for agent capabilities while keeping the C
 ## Production Stack
 
 - CLI: Go module under `cli/`.
-- Registry: static JSON manifests under `registry/packs/`.
+- Registry packs: static JSON manifests under `registry/packs/`.
+- Registry skills: reusable skill capability manifests under `registry/skills/`.
+- Registry plugins: reusable plugin/tool capability manifests under `registry/plugins/`.
 - Schema: `registry/schemas/agent-pack.schema.json`.
 - Receipts: `<target>/receipts/<pack-id>.json`.
 - Lockfiles: `<target>/packs/<pack-id>/agent-pack.lock`.

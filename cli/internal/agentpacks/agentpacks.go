@@ -27,7 +27,9 @@ type Pack struct {
 	License      string       `json:"license,omitempty"`
 	Tags         []string     `json:"tags,omitempty"`
 	Packs        []string     `json:"packs,omitempty"`
-	Capabilities []Capability `json:"capabilities"`
+	Skills       []string     `json:"skills,omitempty"`
+	Plugins      []string     `json:"plugins,omitempty"`
+	Capabilities []Capability `json:"capabilities,omitempty"`
 	Path         string       `json:"-"`
 }
 
@@ -215,7 +217,13 @@ func Show(registry, id string, out io.Writer) error {
 	fmt.Fprintf(out, "License: %s\n", license)
 	fmt.Fprintf(out, "Tags: %s\n", strings.Join(pack.Tags, ", "))
 	if len(pack.Packs) > 0 {
-		fmt.Fprintf(out, "Includes: %s\n", strings.Join(pack.Packs, ", "))
+		fmt.Fprintf(out, "Includes packs: %s\n", strings.Join(pack.Packs, ", "))
+	}
+	if len(pack.Skills) > 0 {
+		fmt.Fprintf(out, "Includes skills: %s\n", strings.Join(pack.Skills, ", "))
+	}
+	if len(pack.Plugins) > 0 {
+		fmt.Fprintf(out, "Includes plugins: %s\n", strings.Join(pack.Plugins, ", "))
 	}
 	fmt.Fprintln(out)
 	fmt.Fprintln(out, "Capabilities:")
@@ -322,6 +330,8 @@ func ExpandPack(registry string, pack Pack, seen map[string]bool) (Pack, error) 
 	seen[pack.ID] = true
 	out := pack
 	out.Packs = append([]string{}, pack.Packs...)
+	out.Skills = append([]string{}, pack.Skills...)
+	out.Plugins = append([]string{}, pack.Plugins...)
 	out.Capabilities = []Capability{}
 	for _, childRef := range pack.Packs {
 		child, err := FindPack(registry, childRef)
@@ -333,6 +343,20 @@ func ExpandPack(registry string, pack Pack, seen map[string]bool) (Pack, error) 
 			return Pack{}, err
 		}
 		out.Capabilities = append(out.Capabilities, expanded.Capabilities...)
+	}
+	for _, skillRef := range pack.Skills {
+		skill, err := FindCapability(registry, "skills", skillRef)
+		if err != nil {
+			return Pack{}, err
+		}
+		out.Capabilities = append(out.Capabilities, skill)
+	}
+	for _, pluginRef := range pack.Plugins {
+		plugin, err := FindCapability(registry, "plugins", pluginRef)
+		if err != nil {
+			return Pack{}, err
+		}
+		out.Capabilities = append(out.Capabilities, plugin)
 	}
 	out.Capabilities = append(out.Capabilities, pack.Capabilities...)
 	delete(seen, pack.ID)
@@ -480,6 +504,25 @@ func ValidatePath(path string, out io.Writer) error {
 	}
 	failed := false
 	for _, p := range paths {
+		if isCapabilityManifestPath(p) {
+			capability, err := LoadCapability(p)
+			if err != nil {
+				fmt.Fprintf(out, "FAIL  %s: %s\n", p, err)
+				failed = true
+				continue
+			}
+			errors := ValidateCapability(capability, "capability")
+			if len(errors) > 0 {
+				fmt.Fprintf(out, "FAIL  %s\n", p)
+				for _, msg := range errors {
+					fmt.Fprintf(out, "  - %s\n", msg)
+				}
+				failed = true
+			} else {
+				fmt.Fprintf(out, "OK    %s\n", p)
+			}
+			continue
+		}
 		pack, err := LoadPack(p)
 		if err != nil {
 			fmt.Fprintf(out, "FAIL  %s: %s\n", p, err)
@@ -503,6 +546,85 @@ func ValidatePath(path string, out io.Writer) error {
 	return nil
 }
 
+func FindCapability(registry, kind, id string) (Capability, error) {
+	root := registryRoot(registry)
+	path := filepath.Join(root, kind, id+".json")
+	capability, err := LoadCapability(path)
+	if err != nil {
+		return Capability{}, fmt.Errorf("%s capability not found: %s", strings.TrimSuffix(kind, "s"), id)
+	}
+	return capability, nil
+}
+
+func LoadCapability(path string) (Capability, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return Capability{}, err
+	}
+	var capability Capability
+	if err := json.Unmarshal(data, &capability); err != nil {
+		return Capability{}, err
+	}
+	return capability, nil
+}
+
+func isCapabilityManifestPath(path string) bool {
+	parts := strings.Split(filepath.ToSlash(path), "/")
+	for _, part := range parts {
+		if part == "skills" || part == "plugins" {
+			return true
+		}
+	}
+	return false
+}
+
+func registryRoot(registry string) string {
+	base := filepath.Base(registry)
+	if base == "packs" {
+		return filepath.Dir(registry)
+	}
+	if _, err := os.Stat(filepath.Join(registry, "packs")); err == nil {
+		return registry
+	}
+	if _, err := os.Stat(filepath.Join(registry, "registry")); err == nil {
+		return filepath.Join(registry, "registry")
+	}
+	return filepath.Dir(registry)
+}
+
+func ValidateCapability(capability Capability, prefix string) []string {
+	var errs []string
+	if capability.Type == "" {
+		errs = append(errs, prefix+".type is required")
+	}
+	if capability.Name == "" {
+		errs = append(errs, prefix+".name is required")
+	}
+	if capability.Source == "" {
+		errs = append(errs, prefix+".source is required")
+	}
+	if capability.Type == "skill" {
+		if capability.Format != "agent-skill" {
+			errs = append(errs, prefix+".format must be agent-skill")
+		}
+		if capability.Entry == "" {
+			errs = append(errs, prefix+".entry is required")
+		}
+	}
+	if capability.Type == "plugin" {
+		if capability.Format == "" {
+			errs = append(errs, prefix+".format is required")
+		}
+		if capability.Install == nil || capability.Install["method"] == "" {
+			errs = append(errs, prefix+".install.method is required")
+		}
+		if capability.Install != nil && capability.Install["command"] != "" && !capability.RequiresExecution {
+			errs = append(errs, prefix+".requiresExecution must be true when install.command is set")
+		}
+	}
+	return errs
+}
+
 func ValidatePack(pack Pack) []string {
 	var errs []string
 	if pack.ID == "" || !regexp.MustCompile(`^[a-z0-9][a-z0-9-]*[a-z0-9]$`).MatchString(pack.ID) {
@@ -517,39 +639,11 @@ func ValidatePack(pack Pack) []string {
 	if pack.Description == "" {
 		errs = append(errs, "description is required")
 	}
-	if len(pack.Capabilities) == 0 && len(pack.Packs) == 0 {
-		errs = append(errs, "capabilities or packs is required")
+	if len(pack.Capabilities) == 0 && len(pack.Packs) == 0 && len(pack.Skills) == 0 && len(pack.Plugins) == 0 {
+		errs = append(errs, "capabilities, packs, skills, or plugins is required")
 	}
 	for i, capability := range pack.Capabilities {
-		prefix := fmt.Sprintf("capabilities[%d]", i)
-		if capability.Type == "" {
-			errs = append(errs, prefix+".type is required")
-		}
-		if capability.Name == "" {
-			errs = append(errs, prefix+".name is required")
-		}
-		if capability.Source == "" {
-			errs = append(errs, prefix+".source is required")
-		}
-		if capability.Type == "skill" {
-			if capability.Format != "agent-skill" {
-				errs = append(errs, prefix+".format must be agent-skill")
-			}
-			if capability.Entry == "" {
-				errs = append(errs, prefix+".entry is required")
-			}
-		}
-		if capability.Type == "plugin" {
-			if capability.Format == "" {
-				errs = append(errs, prefix+".format is required")
-			}
-			if capability.Install == nil || capability.Install["method"] == "" {
-				errs = append(errs, prefix+".install.method is required")
-			}
-			if capability.Install != nil && capability.Install["command"] != "" && !capability.RequiresExecution {
-				errs = append(errs, prefix+".requiresExecution must be true when install.command is set")
-			}
-		}
+		errs = append(errs, ValidateCapability(capability, fmt.Sprintf("capabilities[%d]", i))...)
 	}
 	return errs
 }

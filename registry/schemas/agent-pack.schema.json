@@ -43,6 +43,18 @@
       "items": {
         "type": "string"
       }
+    },
+    "skills": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "plugins": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
     }
   },
   "$defs": {
@@ -230,6 +242,16 @@
     {
       "required": [
         "packs"
+      ]
+    },
+    {
+      "required": [
+        "skills"
+      ]
+    },
+    {
+      "required": [
+        "plugins"
       ]
     }
   ]
