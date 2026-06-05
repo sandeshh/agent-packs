@@ -90,9 +90,8 @@ jobs:
 
   deploy-pages:
     needs: test
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' && vars.AGENT_PACKS_DEPLOY_PAGES == 'true'
     runs-on: ubuntu-latest
-    continue-on-error: true
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
