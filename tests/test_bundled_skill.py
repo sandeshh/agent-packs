@@ -29,8 +29,11 @@ class BundledSkillTest(unittest.TestCase):
         installer = (ROOT / "install.sh").read_text(encoding="utf-8")
 
         self.assertIn("AGENT_PACKS_INSTALL_SKILL", installer)
+        self.assertIn("AGENT_PACKS_AGENT", installer)
         self.assertIn("AGENT_PACKS_SKILL_DIR", installer)
         self.assertIn("skills/agent-packs", installer)
+        self.assertIn(".opencode/skills", installer)
+        self.assertIn(".claude/skills", installer)
 
     def test_release_archive_includes_bundled_skill(self):
         release = (ROOT / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")

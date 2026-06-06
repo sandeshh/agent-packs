@@ -5,7 +5,23 @@ REPO="${AGENT_PACKS_REPO:-sandeshh/agent-packs}"
 VERSION="${AGENT_PACKS_VERSION:-latest}"
 INSTALL_DIR="${AGENT_PACKS_INSTALL_DIR:-${HOME}/.local/bin}"
 INSTALL_SKILL="${AGENT_PACKS_INSTALL_SKILL:-1}"
-SKILL_DIR="${AGENT_PACKS_SKILL_DIR:-${HOME}/.codex/skills/agent-packs}"
+SKILL_AGENT="${AGENT_PACKS_AGENT:-codex}"
+
+skill_root_for_agent() {
+  case "$1" in
+    claude|claude-code) echo "${HOME}/.claude/skills" ;;
+    codex) echo "${HOME}/.codex/skills" ;;
+    cursor) echo "${HOME}/.cursor/skills" ;;
+    gemini|gemini-cli) echo "${HOME}/.gemini/skills" ;;
+    copilot|github-copilot) echo "${HOME}/.github/skills" ;;
+    goose) echo "${HOME}/.goose/skills" ;;
+    opencode|open-code) echo "${HOME}/.opencode/skills" ;;
+    generic) echo "${HOME}/skills" ;;
+    *) echo "unsupported AGENT_PACKS_AGENT: $1" >&2; exit 1 ;;
+  esac
+}
+
+SKILL_DIR="${AGENT_PACKS_SKILL_DIR:-$(skill_root_for_agent "${SKILL_AGENT}")/agent-packs}"
 
 os="$(uname -s | tr '[:upper:]' '[:lower:]')"
 arch="$(uname -m)"

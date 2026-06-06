@@ -70,8 +70,9 @@ curl -fsSL https://raw.githubusercontent.com/sandeshh/agent-packs/main/install.s
 ```
 
 Release binaries are built by `.github/workflows/release.yml` on version tags (`v*`).
-Release archives include the bundled `skills/agent-packs` Codex skill. The
-bootstrap installer installs it to `~/.codex/skills/agent-packs` by default;
+Release archives include the bundled `skills/agent-packs` skill for supported
+agentic code editors. The bootstrap installer installs it to the selected
+editor's skill directory with `AGENT_PACKS_AGENT` and defaults to Codex;
 Homebrew packages it under `pkgshare`.
 
 ## Catalog And CI

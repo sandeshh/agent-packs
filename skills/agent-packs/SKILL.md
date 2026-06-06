@@ -7,7 +7,7 @@ metadata:
 
 # Agent Packs
 
-Use this skill when the user is working with Agent Packs itself: installing the CLI, choosing packs, installing capabilities into coding agents, creating registry entries, debugging validation failures, or preparing a registry contribution.
+Use this skill when the user is working with Agent Packs itself: installing the CLI, choosing packs, installing capabilities into agentic code editors, creating registry entries, debugging validation failures, or preparing a registry contribution.
 
 ## First Checks
 
@@ -33,9 +33,9 @@ cli/bin/agent-packs publish --check
 
 - Discover packs: `agent-packs search [query]`
 - Explain a pack: `agent-packs show <pack> [--json]`
-- Install a pack: `agent-packs install <pack> --agent codex --mode reference`
+- Install a pack: `agent-packs install <pack> --agent <tool> --mode reference`
 - Preview an install: `agent-packs install <pack> --dry-run`
-- Initialize project defaults: `agent-packs init --agent codex --mode reference --scope project .`
+- Initialize project defaults: `agent-packs init --agent <tool> --mode reference --scope project .`
 - Validate manifests: `agent-packs validate registry/packs registry/skills registry/plugins`
 - Inspect provenance: `agent-packs attribution <pack>` and `agent-packs licenses <pack>`
 - Check safety: `agent-packs audit <pack>`, `agent-packs verify <pack>`, and `agent-packs policy check <pack> registry/policy/default.json`
@@ -88,7 +88,7 @@ When adding or changing a pack:
 5. Regenerate `registry/index.json` with `agent-packs index --output registry/index.json` when catalog content changes.
 6. Run `agent-packs publish --check` before pushing registry changes.
 
-## Supported Targets
+## Supported Agentic Code Editors
 
 Use `agent-packs doctor targets` to inspect target directories. Common targets:
 
@@ -96,9 +96,21 @@ Use `agent-packs doctor targets` to inspect target directories. Common targets:
 - Codex project skills: `.agents/skills`
 - Claude skills: `.claude/skills`
 - Cursor skills: `.cursor/skills`
+- Gemini CLI skills: `.gemini/skills`
 - GitHub Copilot skills: `.github/skills`
+- Goose skills: `.goose/skills`
+- OpenCode skills: `.opencode/skills`
+- Generic skills: `skills`
 
-Use `--agent <tool>` or `--target-tool <tool>` to select a target. Use `--scope project` for project-local installs.
+Use `--agent <tool>` or `--target-tool <tool>` to select a target. Supported tool IDs include `codex`, `claude`, `cursor`, `gemini`, `copilot`, `goose`, `opencode`, and `generic`. Common CLI aliases include `claude-code` and `github-copilot`. Use `--scope project` for project-local installs.
+
+When helping users install this bundled `agent-packs` skill, prefer the bootstrap environment variable over hardcoded paths:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/sandeshh/agent-packs/main/install.sh | AGENT_PACKS_AGENT=opencode sh
+```
+
+Use `AGENT_PACKS_SKILL_DIR=/path/to/skills/agent-packs` only when the editor uses a custom skill location.
 
 ## Common Debugging
 
