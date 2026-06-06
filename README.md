@@ -58,6 +58,7 @@ to choose a different skill directory.
 cli/bin/agent-packs search
 cli/bin/agent-packs show frontend-engineer
 cli/bin/agent-packs install frontend-engineer --target ./sandbox
+cli/bin/agent-packs install frontend-engineer pr-review popular-engineering-skills --target ./sandbox
 cli/bin/agent-packs install frontend-engineer --agent codex --only skills --dry-run
 cli/bin/agent-packs init --agent codex --mode reference --scope project .
 cli/bin/agent-packs version
@@ -69,8 +70,8 @@ Additional commands:
 cli/bin/agent-packs search frontend --json
 cli/bin/agent-packs show frontend-engineer --json
 cli/bin/agent-packs audit frontend-engineer --json
-cli/bin/agent-packs upgrade frontend-engineer --target ./sandbox
-cli/bin/agent-packs rollback frontend-engineer --target ./sandbox
+cli/bin/agent-packs upgrade frontend-engineer pr-review --target ./sandbox
+cli/bin/agent-packs rollback frontend-engineer pr-review --target ./sandbox
 cli/bin/agent-packs tree eng-leader
 cli/bin/agent-packs publish --check
 cli/bin/agent-packs new pack platform-engineer --dir registry/packs
@@ -93,7 +94,7 @@ cli/bin/agent-packs diff eng-leader
 cli/bin/agent-packs compat eng-leader --agent codex
 cli/bin/agent-packs cache prune
 cli/bin/agent-packs list --target ./sandbox
-cli/bin/agent-packs uninstall frontend-engineer --target ./sandbox
+cli/bin/agent-packs uninstall frontend-engineer pr-review --target ./sandbox
 cli/bin/agent-packs doctor
 cli/bin/agent-packs doctor targets
 cli/bin/agent-packs validate registry/packs
@@ -152,6 +153,7 @@ Agent Packs orchestrates native install flows instead of replacing them.
 - Sync modes are explicit: `reference` records sources only, `symlink` links materialized skills, `copy` copies skills, and `native` enables native plugin planning.
 - Conflicts are controlled with `--on-conflict skip|overwrite|backup`.
 - Inline plugin commands are preview-safe by default and only run with `--execute-plugins`.
+- Lifecycle commands accept multiple pack IDs directly: `install`, `upgrade`, `rollback`, and `uninstall` run packs sequentially and fail fast on the first error.
 - Installed packs write receipts under `<target>/receipts/`.
 - Installed packs write lockfiles under `<target>/packs/<pack-id>/agent-pack.lock`.
 - `uninstall` removes installed inline skill folders and receipts; referenced plugins are reported for native/manual cleanup.
@@ -163,8 +165,10 @@ Agent Packs supports a basic package-manager lifecycle:
 - `cache`: shows and creates central source/cache/lock/registry directories under the Agent Packs home.
 - `update --all`: refreshes configured registries.
 - `outdated`: lists installed packs with pack-version drift and capability revision drift (`--json` supported).
-- `upgrade <pack>`: re-installs using the prior receipt settings.
-- `rollback <pack>`: restores the previous receipt-backed install state when history exists.
+- `install <pack...>`: installs one or more packs with shared target, agent, mode, conflict, and plugin execution settings.
+- `upgrade <pack...>`: re-installs one or more packs using each pack's prior receipt settings.
+- `rollback <pack...>`: restores one or more previous receipt-backed install states when history exists.
+- `uninstall <pack...>`: removes one or more installed packs, including installed inline skill folders and receipts.
 - `audit <pack>`: supply-chain SBOM report (`--json` supported).
 - `version`: prints CLI version (`--json` supported).
 - `init [dir]`: writes `.agent-packs.yaml` project defaults.

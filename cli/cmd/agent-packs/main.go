@@ -172,8 +172,8 @@ func runInstall(registry, defaultTarget string, args []string) error {
 		return err
 	}
 	remaining := flags.Args()
-	if len(remaining) != 1 {
-		return fmt.Errorf("usage: agent-packs install <pack-id|registry/pack-id> [--target dir] [--agent name] [--only filter] [--dry-run] [--execute-plugins]")
+	if len(remaining) < 1 {
+		return fmt.Errorf("usage: agent-packs install <pack-id|registry/pack-id>... [--target dir] [--agent name] [--only filter] [--dry-run] [--execute-plugins]")
 	}
 	if *targetTool != "" {
 		*agent = *targetTool
@@ -201,7 +201,14 @@ func runInstall(registry, defaultTarget string, args []string) error {
 		installTarget = *target
 		scope = "global"
 	}
-	return agentpacks.InstallWithOptions(registry, *target, remaining[0], installTarget, *agent, *only, *executePlugins, *dryRun, agentpacks.InstallOptions{Mode: *mode, OnConflict: *onConflict, Scope: scope}, os.Stdout)
+	options := agentpacks.InstallOptions{Mode: *mode, OnConflict: *onConflict, Scope: scope}
+	for index, packRef := range remaining {
+		printLifecycleHeader("Installing", packRef, index, len(remaining))
+		if err := agentpacks.InstallWithOptions(registry, *target, packRef, installTarget, *agent, *only, *executePlugins, *dryRun, options, os.Stdout); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func runList(defaultTarget string, args []string) error {
@@ -230,10 +237,16 @@ func runUninstall(defaultTarget string, args []string) error {
 		return err
 	}
 	remaining := flags.Args()
-	if len(remaining) != 1 {
-		return fmt.Errorf("usage: agent-packs uninstall <pack-id> [--target dir]")
+	if len(remaining) < 1 {
+		return fmt.Errorf("usage: agent-packs uninstall <pack-id>... [--target dir]")
 	}
-	return agentpacks.Uninstall(*target, remaining[0], os.Stdout)
+	for index, packRef := range remaining {
+		printLifecycleHeader("Uninstalling", packRef, index, len(remaining))
+		if err := agentpacks.Uninstall(*target, packRef, os.Stdout); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func runDoctor(registry, defaultTarget string, args []string) error {
@@ -280,10 +293,16 @@ func runUpgrade(registry, defaultTarget string, args []string) error {
 		return err
 	}
 	remaining := flags.Args()
-	if len(remaining) != 1 {
-		return fmt.Errorf("usage: agent-packs upgrade <pack-id> [--target dir] [--execute-plugins]")
+	if len(remaining) < 1 {
+		return fmt.Errorf("usage: agent-packs upgrade <pack-id>... [--target dir] [--execute-plugins]")
 	}
-	return agentpacks.Upgrade(registry, *target, remaining[0], *target, *executePlugins, os.Stdout)
+	for index, packRef := range remaining {
+		printLifecycleHeader("Upgrading", packRef, index, len(remaining))
+		if err := agentpacks.Upgrade(registry, *target, packRef, *target, *executePlugins, os.Stdout); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func runRollback(defaultTarget string, args []string) error {
@@ -294,10 +313,26 @@ func runRollback(defaultTarget string, args []string) error {
 		return err
 	}
 	remaining := flags.Args()
-	if len(remaining) != 1 {
-		return fmt.Errorf("usage: agent-packs rollback <pack-id> [--target dir]")
+	if len(remaining) < 1 {
+		return fmt.Errorf("usage: agent-packs rollback <pack-id>... [--target dir]")
 	}
-	return agentpacks.Rollback(*target, remaining[0], os.Stdout)
+	for index, packRef := range remaining {
+		printLifecycleHeader("Rolling back", packRef, index, len(remaining))
+		if err := agentpacks.Rollback(*target, packRef, os.Stdout); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func printLifecycleHeader(action, packRef string, index, total int) {
+	if total <= 1 {
+		return
+	}
+	if index > 0 {
+		fmt.Println()
+	}
+	fmt.Printf("==> %s %s (%d/%d)\n", action, packRef, index+1, total)
 }
 
 func runAudit(registry string, args []string) error {
@@ -734,11 +769,11 @@ func usage() {
 	fmt.Fprintln(os.Stderr, "Usage:")
 	fmt.Fprintln(os.Stderr, "  agent-packs search [query]")
 	fmt.Fprintln(os.Stderr, "  agent-packs show <pack-id>")
-	fmt.Fprintln(os.Stderr, "  agent-packs install <pack-id|registry/pack-id> [--target dir] [--agent tool|--target-tool tool] [--only all|skills|plugins] [--mode reference|symlink|copy|native] [--on-conflict skip|overwrite|backup] [--project dir|--global] [--dry-run] [--execute-plugins]")
+	fmt.Fprintln(os.Stderr, "  agent-packs install <pack-id|registry/pack-id>... [--target dir] [--agent tool|--target-tool tool] [--only all|skills|plugins] [--mode reference|symlink|copy|native] [--on-conflict skip|overwrite|backup] [--project dir|--global] [--dry-run] [--execute-plugins]")
 	fmt.Fprintln(os.Stderr, "  agent-packs list [--target dir]")
 	fmt.Fprintln(os.Stderr, "  agent-packs update|outdated|upgrade|cache ...")
-	fmt.Fprintln(os.Stderr, "  agent-packs upgrade <pack-id> [--target dir] [--execute-plugins]")
-	fmt.Fprintln(os.Stderr, "  agent-packs rollback <pack-id> [--target dir]")
+	fmt.Fprintln(os.Stderr, "  agent-packs upgrade <pack-id>... [--target dir] [--execute-plugins]")
+	fmt.Fprintln(os.Stderr, "  agent-packs rollback <pack-id>... [--target dir]")
 	fmt.Fprintln(os.Stderr, "  agent-packs version [--json]")
 	fmt.Fprintln(os.Stderr, "  agent-packs init [dir] [--agent tool] [--mode reference|symlink|copy|native]")
 	fmt.Fprintln(os.Stderr, "  agent-packs new <pack|skill|plugin> <id> [--name name] [--dir dir] [--force]")
@@ -753,7 +788,7 @@ func usage() {
 	fmt.Fprintln(os.Stderr, "  agent-packs scan [path]")
 	fmt.Fprintln(os.Stderr, "  agent-packs import <skills-dir> [--target dir]")
 	fmt.Fprintln(os.Stderr, "  agent-packs lint|verify|resolve <pack-id>")
-	fmt.Fprintln(os.Stderr, "  agent-packs uninstall <pack-id> [--target dir]")
+	fmt.Fprintln(os.Stderr, "  agent-packs uninstall <pack-id>... [--target dir]")
 	fmt.Fprintln(os.Stderr, "  agent-packs doctor [targets]")
 	fmt.Fprintln(os.Stderr, "  agent-packs validate <file-or-directory>")
 	fmt.Fprintln(os.Stderr, "  agent-packs registry add|list|remove ...")
