@@ -124,6 +124,15 @@ func Rollback(target, packID string, out io.Writer) error {
 	if err != nil {
 		return err
 	}
+	// Pre-flight: verify local skill sources before modifying anything so a
+	// missing source doesn't leave the environment empty after removal.
+	for _, item := range previous.Plan.Capabilities {
+		if item.Type == "skill" && item.Action != "reference" && item.Source != "" && util.IsLocalSource(item.Source) {
+			if _, statErr := os.Stat(util.ExpandHome(item.Source)); statErr != nil {
+				return fmt.Errorf("rollback aborted: skill %q source %q unavailable: %w", item.Name, item.Source, statErr)
+			}
+		}
+	}
 	current, err := LoadReceipt(filepath.Join(absTarget, "receipts", packID+".json"))
 	if err == nil {
 		for _, item := range current.Plan.Capabilities {
@@ -246,7 +255,7 @@ func WriteLockfile(packDir string, pack model.Pack) error {
 		entry := model.LockEntry{
 			Type: capability.Type, Name: capability.Name, Source: capability.Source,
 			UpstreamSource: capability.UpstreamSource, Version: capability.Version,
-			Revision:   resolve.ResolveSourceLive(capability.Source).Revision,
+			Revision:   resolve.ResolveSource(capability.Source).Revision,
 			ResolvedAt: time.Now().UTC().Format(time.RFC3339Nano),
 			Integrity:  capability.Integrity,
 			Digest:     resolve.DigestCapability(capability),

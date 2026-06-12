@@ -26,7 +26,7 @@ func installPlugin(item model.PlanItem, executePlugins bool) model.PlanItem {
 		item.Reason = "plugin command execution requires --execute-plugins"
 		return item
 	}
-	command, err := buildPluginCommand(item)
+	execArgs, command, err := buildPluginExec(item)
 	if err != nil {
 		item.Status = "failed"
 		item.Reason = err.Error()
@@ -35,7 +35,13 @@ func installPlugin(item model.PlanItem, executePlugins bool) model.PlanItem {
 	cwd := pluginWorkingDirectory(item)
 	ctx, cancel := context.WithTimeout(context.Background(), defaultPluginTimeout)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "sh", "-c", command)
+	var cmd *exec.Cmd
+	if len(execArgs) > 0 {
+		cmd = exec.CommandContext(ctx, execArgs[0], execArgs[1:]...)
+		command = strings.Join(execArgs, " ")
+	} else {
+		cmd = exec.CommandContext(ctx, "sh", "-c", command)
+	}
 	cmd.Dir = cwd
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
@@ -70,26 +76,30 @@ func installPlugin(item model.PlanItem, executePlugins bool) model.PlanItem {
 	return item
 }
 
-func buildPluginCommand(item model.PlanItem) (string, error) {
+// buildPluginExec returns either structured args (for direct exec, avoiding shell injection)
+// or a pre-built command string (for sh -c when the command comes verbatim from the manifest).
+// If execArgs is non-empty, use direct exec; otherwise use sh -c with command.
+func buildPluginExec(item model.PlanItem) (execArgs []string, command string, err error) {
 	switch item.Method {
 	case "claude-marketplace":
 		if item.Command != "" {
-			return item.Command, nil
+			return nil, item.Command, nil
 		}
 		if item.Package == "" || item.Marketplace == "" {
-			return "", fmt.Errorf("claude-marketplace plugin requires package and marketplace")
+			return nil, "", fmt.Errorf("claude-marketplace plugin requires package and marketplace")
 		}
-		return fmt.Sprintf("claude plugin install %s@%s", item.Package, item.Marketplace), nil
+		// Use direct exec to avoid shell injection on Package/Marketplace values.
+		return []string{"claude", "plugin", "install", item.Package + "@" + item.Marketplace}, "", nil
 	case "manual":
 		if item.Command == "" {
-			return "", fmt.Errorf("plugin install command is not specified")
+			return nil, "", fmt.Errorf("plugin install command is not specified")
 		}
-		return item.Command, nil
+		return nil, item.Command, nil
 	default:
 		if item.Command == "" {
-			return "", fmt.Errorf("plugin install command is not specified")
+			return nil, "", fmt.Errorf("plugin install command is not specified")
 		}
-		return item.Command, nil
+		return nil, item.Command, nil
 	}
 }
 

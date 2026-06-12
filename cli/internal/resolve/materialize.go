@@ -5,6 +5,7 @@ import (
 	"archive/zip"
 	"bytes"
 	"compress/gzip"
+	"context"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
@@ -22,6 +23,7 @@ import (
 )
 
 const defaultHTTPTimeout = 2 * time.Minute
+const defaultGitTimeout = 2 * time.Minute
 
 // ResolveSourceLive resolves a source and, for moving git refs, queries the remote HEAD.
 func ResolveSourceLive(source string) model.SourceResolution {
@@ -73,47 +75,92 @@ func MaterializeSkillSource(source, target string) (string, func(), error) {
 		return abs, nil, err
 	}
 	cache := filepath.Join(target, "cache", "sources", util.Slugify(source))
-	_ = os.RemoveAll(cache)
 	if err := os.MkdirAll(filepath.Dir(cache), 0o755); err != nil {
 		return "", nil, err
 	}
 	if isArchiveSource(source) {
 		return materializeArchiveSource(source, cache)
 	}
+	return materializeGitSource(source, cache)
+}
+
+func materializeGitSource(source, cache string) (string, func(), error) {
 	repo, ref, subpath, kind := ParseGitSource(source)
 	if repo == "" {
 		return "", nil, fmt.Errorf("unsupported remote source: %s", source)
 	}
-	args := []string{"clone", "--depth", "1"}
-	if ref != "" && kind != "github-commit" {
-		args = append(args, "--branch", ref)
-	}
+	// Clone into a temp dir first; replace the cache only on success so a
+	// failed clone doesn't destroy a previously usable cached copy.
+	tmp := cache + ".tmp"
+	_ = os.RemoveAll(tmp)
+	var cloneErr error
 	if kind == "github-commit" {
-		args = append(args, repo, cache)
-		cmd := exec.Command("git", args...)
-		var stderr bytes.Buffer
-		cmd.Stderr = &stderr
-		if err := cmd.Run(); err != nil {
-			return "", nil, fmt.Errorf("git clone failed: %s", strings.TrimSpace(stderr.String()))
-		}
-		checkout := exec.Command("git", "-C", cache, "checkout", ref)
-		checkout.Stderr = &stderr
-		if err := checkout.Run(); err != nil {
-			return "", nil, fmt.Errorf("git checkout failed: %s", strings.TrimSpace(stderr.String()))
-		}
+		cloneErr = cloneCommit(repo, ref, tmp)
 	} else {
-		args = append(args, repo, cache)
-		cmd := exec.Command("git", args...)
-		var stderr bytes.Buffer
-		cmd.Stderr = &stderr
-		if err := cmd.Run(); err != nil {
-			return "", nil, fmt.Errorf("git clone failed: %s", strings.TrimSpace(stderr.String()))
-		}
+		cloneErr = cloneRef(repo, ref, tmp)
+	}
+	if cloneErr != nil {
+		_ = os.RemoveAll(tmp)
+		return "", nil, cloneErr
+	}
+	_ = os.RemoveAll(cache)
+	if err := os.Rename(tmp, cache); err != nil {
+		_ = os.RemoveAll(tmp)
+		return "", nil, fmt.Errorf("failed to update source cache: %w", err)
 	}
 	if subpath != "" {
 		return filepath.Join(cache, subpath), nil, nil
 	}
 	return cache, nil, nil
+}
+
+// cloneCommit fetches a single commit by SHA without cloning the full history,
+// which works for any reachable commit on GitHub and GitLab (not just branch tips).
+func cloneCommit(repo, commit, dest string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), defaultGitTimeout)
+	defer cancel()
+	for _, args := range [][]string{
+		{"init", dest},
+		{"-C", dest, "remote", "add", "origin", repo},
+	} {
+		if out, err := exec.CommandContext(ctx, "git", args...).CombinedOutput(); err != nil {
+			return fmt.Errorf("git %s failed: %s", args[0], strings.TrimSpace(string(out)))
+		}
+	}
+	fetchCtx, fetchCancel := context.WithTimeout(context.Background(), defaultGitTimeout)
+	defer fetchCancel()
+	var stderr bytes.Buffer
+	fetch := exec.CommandContext(fetchCtx, "git", "-C", dest, "fetch", "--depth", "1", "origin", commit)
+	fetch.Stderr = &stderr
+	if err := fetch.Run(); err != nil {
+		return fmt.Errorf("git fetch failed: %s", strings.TrimSpace(stderr.String()))
+	}
+	checkoutCtx, checkoutCancel := context.WithTimeout(context.Background(), defaultGitTimeout)
+	defer checkoutCancel()
+	stderr.Reset()
+	checkout := exec.CommandContext(checkoutCtx, "git", "-C", dest, "checkout", "FETCH_HEAD")
+	checkout.Stderr = &stderr
+	if err := checkout.Run(); err != nil {
+		return fmt.Errorf("git checkout failed: %s", strings.TrimSpace(stderr.String()))
+	}
+	return nil
+}
+
+func cloneRef(repo, ref, dest string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), defaultGitTimeout)
+	defer cancel()
+	args := []string{"clone", "--depth", "1"}
+	if ref != "" {
+		args = append(args, "--branch", ref)
+	}
+	args = append(args, repo, dest)
+	cmd := exec.CommandContext(ctx, "git", args...)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("git clone failed: %s", strings.TrimSpace(stderr.String()))
+	}
+	return nil
 }
 
 func materializeArchiveSource(source, cache string) (string, func(), error) {
@@ -185,6 +232,10 @@ func untarGzArchive(archivePath, dest string) error {
 		if err != nil {
 			return err
 		}
+		rel, err := filepath.Rel(dest, filepath.Join(dest, header.Name))
+		if err != nil || strings.HasPrefix(rel, "..") {
+			return fmt.Errorf("archive entry %q attempts path traversal", header.Name)
+		}
 		target := filepath.Join(dest, header.Name)
 		switch header.Typeflag {
 		case tar.TypeDir:
@@ -215,6 +266,10 @@ func unzipArchive(archivePath, dest string) error {
 	}
 	defer reader.Close()
 	for _, file := range reader.File {
+		rel, err := filepath.Rel(dest, filepath.Join(dest, file.Name))
+		if err != nil || strings.HasPrefix(rel, "..") {
+			return fmt.Errorf("archive entry %q attempts path traversal", file.Name)
+		}
 		target := filepath.Join(dest, file.Name)
 		if file.FileInfo().IsDir() {
 			if err := os.MkdirAll(target, 0o755); err != nil {

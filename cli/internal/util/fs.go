@@ -46,10 +46,8 @@ func CopyFile(source, destination string) error {
 		return err
 	}
 	defer output.Close()
-	if _, err := io.Copy(output, input); err != nil {
-		return err
-	}
-	return output.Close()
+	_, err = io.Copy(output, input)
+	return err
 }
 
 func CopyDir(source, destination string) error {

@@ -2,6 +2,7 @@ package registry
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -147,6 +148,13 @@ func Show(registry, id string, out io.Writer) error {
 }
 
 func ExpandPack(registry string, pack model.Pack, seen map[string]bool) (model.Pack, error) {
+	return expandPackInner(registry, pack, seen, map[string]bool{})
+}
+
+// expandPackInner carries two separate maps:
+//   - seen: DFS ancestry set for cycle detection (with backtracking via delete)
+//   - contributed: packs already fully expanded, to deduplicate diamond dependencies
+func expandPackInner(registry string, pack model.Pack, seen, contributed map[string]bool) (model.Pack, error) {
 	if seen[pack.ID] {
 		return model.Pack{}, fmt.Errorf("pack composition cycle includes %s", pack.ID)
 	}
@@ -157,14 +165,18 @@ func ExpandPack(registry string, pack model.Pack, seen map[string]bool) (model.P
 	out.Plugins = append(model.CapabilityRefs{}, pack.Plugins...)
 	out.Capabilities = []model.Capability{}
 	for _, childRef := range pack.Packs {
+		if contributed[childRef] {
+			continue
+		}
 		child, err := FindPack(registry, childRef)
 		if err != nil {
 			return model.Pack{}, err
 		}
-		expanded, err := ExpandPack(registry, child, seen)
+		expanded, err := expandPackInner(registry, child, seen, contributed)
 		if err != nil {
 			return model.Pack{}, err
 		}
+		contributed[childRef] = true
 		out.Capabilities = append(out.Capabilities, expanded.Capabilities...)
 	}
 	for _, skillRef := range pack.Skills {
@@ -420,15 +432,23 @@ func materializeRegistry(home, name, source string) (string, error) {
 	}
 	cache := filepath.Join(util.ExpandHome(home), "registries", util.Slugify(name))
 	if _, err := os.Stat(filepath.Join(cache, ".git")); err == nil {
-		cmd := exec.Command("git", "-C", cache, "pull", "--ff-only")
-		_ = cmd.Run()
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+		defer cancel()
+		cmd := exec.CommandContext(ctx, "git", "-C", cache, "pull", "--ff-only")
+		var stderr bytes.Buffer
+		cmd.Stderr = &stderr
+		if err := cmd.Run(); err != nil {
+			fmt.Fprintf(os.Stderr, "warning: registry %q may be stale: %s\n", name, strings.TrimSpace(stderr.String()))
+		}
 		return cache, nil
 	}
 	_ = os.RemoveAll(cache)
 	if err := os.MkdirAll(filepath.Dir(cache), 0o755); err != nil {
 		return "", err
 	}
-	cmd := exec.Command("git", "clone", "--depth", "1", source, cache)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "git", "clone", "--depth", "1", source, cache)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
