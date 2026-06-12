@@ -138,7 +138,8 @@ func planCapability(capability model.Capability, target, agent string, options m
 			Mode: options.Mode, OnConflict: options.OnConflict,
 			Source: capability.Source, UpstreamSource: capability.UpstreamSource,
 			Format: capability.Format, Command: capability.Install["command"],
-			Method: capability.Install["method"], Package: capability.Install["package"],
+			UninstallCommand: capability.Install["uninstall"],
+			Method:           capability.Install["method"], Package: capability.Install["package"],
 			Marketplace:      capability.Install["marketplace"],
 			ExpectedChecksum: expectedChecksum, Status: "planned",
 		}

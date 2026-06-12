@@ -158,11 +158,11 @@ Agent Packs orchestrates native install flows instead of replacing them.
 - Inline remote skill capabilities can still be fetched with `git` when the source is a Git URL or a GitHub `/tree/<branch>/<path>` URL.
 - Sync modes are explicit: `reference` records sources only, `symlink` links materialized skills, `copy` copies skills, and `native` enables native plugin planning.
 - Conflicts are controlled with `--on-conflict skip|overwrite|backup`.
-- Inline plugin commands are preview-safe by default and only run with `--execute-plugins`.
+- Inline plugin install and uninstall commands are preview-safe by default and only run with `--execute-plugins`.
 - Lifecycle commands accept multiple pack IDs directly: `install`, `upgrade`, `rollback`, and `uninstall` run packs sequentially and fail fast on the first error.
 - Installed packs write receipts under `<target>/receipts/`.
 - Installed packs write lockfiles under `<target>/packs/<pack-id>/agent-pack.lock`.
-- `uninstall` removes installed inline skill folders and receipts; referenced plugins are reported for native/manual cleanup.
+- `uninstall` removes installed inline skill folders and receipts. Plugin cleanup commands run only with `uninstall --execute-plugins`; otherwise plugins are reported for native/manual cleanup.
 
 ## Lifecycle Commands
 
@@ -174,7 +174,7 @@ Agent Packs supports a basic package-manager lifecycle:
 - `install <pack...>`: installs one or more packs with shared target, agent, mode, conflict, and plugin execution settings.
 - `upgrade <pack...>`: re-installs one or more packs using each pack's prior receipt settings.
 - `rollback <pack...>`: restores one or more previous receipt-backed install states when history exists.
-- `uninstall <pack...>`: removes one or more installed packs, including installed inline skill folders and receipts.
+- `uninstall <pack...>`: removes one or more installed packs, including installed inline skill folders, optional plugin cleanup commands, and receipts.
 - `audit <pack>`: supply-chain SBOM report (`--json` supported).
 - `version`: prints CLI version (`--json` supported).
 - `init [dir]`: writes `.agent-packs.yaml` project defaults.
@@ -223,7 +223,8 @@ Plugins and skills are declared as entries in `capabilities`. Plugin entries mus
     "method": "claude-marketplace",
     "marketplace": "claude-plugins-official",
     "package": "code-review",
-    "command": "claude plugin install code-review@claude-plugins-official"
+    "command": "claude plugin install code-review@claude-plugins-official",
+    "uninstall": "claude plugin uninstall code-review@claude-plugins-official"
   }
 }
 ```

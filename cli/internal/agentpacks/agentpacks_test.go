@@ -301,6 +301,18 @@ func TestValidatePackRequiresExecutionForPluginCommands(t *testing.T) {
 	}
 }
 
+func TestValidatePackRequiresExecutionForPluginUninstallCommands(t *testing.T) {
+	pack := testPack("/tmp/example-skill")
+	pack.Capabilities[1].RequiresExecution = false
+	pack.Capabilities[1].Install["command"] = ""
+	pack.Capabilities[1].Install["uninstall"] = "echo uninstall-plugin"
+	errors := ValidatePack(pack)
+	joined := strings.Join(errors, "\n")
+	if !strings.Contains(joined, "install.uninstall") {
+		t.Fatalf("expected install.uninstall validation error, got %v", errors)
+	}
+}
+
 func TestWriteLockfile(t *testing.T) {
 	temp := t.TempDir()
 	pack := testPack("/tmp/example-skill")
@@ -350,6 +362,43 @@ func TestUninstallRemovesInstalledSkillAndReceipt(t *testing.T) {
 		t.Fatalf("skill still exists: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(temp, "receipts", "example.json")); !os.IsNotExist(err) {
+		t.Fatalf("receipt still exists: %v", err)
+	}
+}
+
+func TestUninstallExecutesPluginCleanupWhenOptedIn(t *testing.T) {
+	temp := t.TempDir()
+	pack := Pack{
+		ID:          "plugin-pack",
+		Name:        "Plugin Pack",
+		Version:     "0.1.0",
+		Description: "A plugin lifecycle pack.",
+		Capabilities: []Capability{{
+			Type:    "plugin",
+			Name:    "Example Plugin",
+			Source:  "https://example.com/plugin",
+			Format:  "anthropic-plugin",
+			Install: map[string]string{"method": "manual", "command": "echo install-plugin", "uninstall": "printf cleaned > plugin-cleanup.txt"},
+		}},
+	}
+	plan := BuildInstallPlanWithOptions(pack, temp, "codex", "plugins", InstallOptions{Mode: "copy", OnConflict: "overwrite"})
+	result := ExecutePlan(plan, false)
+	if _, err := WriteReceipt(temp, pack, result); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("AGENT_PACKS_PLUGIN_CWD", temp)
+	var output strings.Builder
+	if err := UninstallWithOptions(temp, "plugin-pack", true, &output); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(filepath.Join(temp, "plugin-cleanup.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != "cleaned" {
+		t.Fatalf("unexpected plugin cleanup marker: %q", string(data))
+	}
+	if _, err := os.Stat(filepath.Join(temp, "receipts", "plugin-pack.json")); !os.IsNotExist(err) {
 		t.Fatalf("receipt still exists: %v", err)
 	}
 }

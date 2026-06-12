@@ -32,48 +32,22 @@ func installPlugin(item model.PlanItem, executePlugins bool) model.PlanItem {
 		item.Reason = err.Error()
 		return item
 	}
-	cwd := pluginWorkingDirectory(item)
-	ctx, cancel := context.WithTimeout(context.Background(), defaultPluginTimeout)
-	defer cancel()
-	var cmd *exec.Cmd
-	if len(execArgs) > 0 {
-		cmd = exec.CommandContext(ctx, execArgs[0], execArgs[1:]...)
-		command = strings.Join(execArgs, " ")
-	} else {
-		cmd = exec.CommandContext(ctx, "sh", "-c", command)
+	return runPluginCommand(item, execArgs, command, "installed")
+}
+
+func uninstallPlugin(item model.PlanItem, executePlugins bool) model.PlanItem {
+	if !executePlugins {
+		item.Status = "pending"
+		item.Reason = "plugin uninstall command execution requires --execute-plugins"
+		return item
 	}
-	cmd.Dir = cwd
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-	err = cmd.Run()
-	exitCode := 0
+	execArgs, command, err := buildPluginUninstallExec(item)
 	if err != nil {
-		exitCode = 1
-		var exitErr *exec.ExitError
-		if errors.As(err, &exitErr) {
-			exitCode = exitErr.ExitCode()
-		}
-		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
-			item.Reason = fmt.Sprintf("plugin command timed out after %s", defaultPluginTimeout)
-		}
-	}
-	item.Command = command
-	item.ExitCode = &exitCode
-	item.Stdout = strings.TrimSpace(stdout.String())
-	item.Stderr = strings.TrimSpace(stderr.String())
-	if err != nil {
-		if item.Reason == "" {
-			item.Reason = strings.TrimSpace(stderr.String())
-			if item.Reason == "" {
-				item.Reason = err.Error()
-			}
-		}
 		item.Status = "failed"
-	} else {
-		item.Status = "installed"
+		item.Reason = err.Error()
+		return item
 	}
-	return item
+	return runPluginCommand(item, execArgs, command, "uninstalled")
 }
 
 // buildPluginExec returns either structured args (for direct exec, avoiding shell injection)
@@ -101,6 +75,66 @@ func buildPluginExec(item model.PlanItem) (execArgs []string, command string, er
 		}
 		return nil, item.Command, nil
 	}
+}
+
+func buildPluginUninstallExec(item model.PlanItem) (execArgs []string, command string, err error) {
+	if item.UninstallCommand != "" {
+		return nil, item.UninstallCommand, nil
+	}
+	switch item.Method {
+	case "claude-marketplace":
+		if item.Package == "" || item.Marketplace == "" {
+			return nil, "", fmt.Errorf("claude-marketplace plugin requires package and marketplace")
+		}
+		return []string{"claude", "plugin", "uninstall", item.Package + "@" + item.Marketplace}, "", nil
+	default:
+		return nil, "", fmt.Errorf("plugin uninstall command is not specified")
+	}
+}
+
+func runPluginCommand(item model.PlanItem, execArgs []string, command, successStatus string) model.PlanItem {
+	cwd := pluginWorkingDirectory(item)
+	ctx, cancel := context.WithTimeout(context.Background(), defaultPluginTimeout)
+	defer cancel()
+	var cmd *exec.Cmd
+	if len(execArgs) > 0 {
+		cmd = exec.CommandContext(ctx, execArgs[0], execArgs[1:]...)
+		command = strings.Join(execArgs, " ")
+	} else {
+		cmd = exec.CommandContext(ctx, "sh", "-c", command)
+	}
+	cmd.Dir = cwd
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	err := cmd.Run()
+	exitCode := 0
+	if err != nil {
+		exitCode = 1
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) {
+			exitCode = exitErr.ExitCode()
+		}
+		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			item.Reason = fmt.Sprintf("plugin command timed out after %s", defaultPluginTimeout)
+		}
+	}
+	item.Command = command
+	item.ExitCode = &exitCode
+	item.Stdout = strings.TrimSpace(stdout.String())
+	item.Stderr = strings.TrimSpace(stderr.String())
+	if err != nil {
+		if item.Reason == "" {
+			item.Reason = strings.TrimSpace(stderr.String())
+			if item.Reason == "" {
+				item.Reason = err.Error()
+			}
+		}
+		item.Status = "failed"
+	} else {
+		item.Status = successStatus
+	}
+	return item
 }
 
 func pluginWorkingDirectory(item model.PlanItem) string {

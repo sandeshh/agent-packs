@@ -169,6 +169,7 @@ type PlanItem struct {
 	Status            string `json:"status"`
 	Format            string `json:"format,omitempty"`
 	Command           string `json:"command,omitempty"`
+	UninstallCommand  string `json:"uninstallCommand,omitempty"`
 	Method            string `json:"method,omitempty"`
 	Package           string `json:"package,omitempty"`
 	Marketplace       string `json:"marketplace,omitempty"`

@@ -83,9 +83,9 @@ CI (`.github/workflows/ci.yml`) runs Go and Python tests, JSON Schema validation
 
 ## Security Posture
 
-Plugin install commands are not executed unless the user passes `--execute-plugins`. Plugin execution uses a timeout, respects `AGENT_PACKS_PLUGIN_CWD`, and supports structured handlers for `claude-marketplace` and `manual` install methods.
+Plugin install and uninstall commands are not executed unless the user passes `--execute-plugins`. Plugin execution uses a timeout, respects `AGENT_PACKS_PLUGIN_CWD`, and supports structured handlers for `claude-marketplace` and `manual` lifecycle methods.
 
-Plugin capabilities with install commands should set `requiresExecution: true` and should include trust metadata such as `trust: "official"` or `trust: "community"`.
+Plugin capabilities with install or uninstall commands should set `requiresExecution: true` and should include trust metadata such as `trust: "official"` or `trust: "community"`.
 
 Integrity metadata uses `integrity.checksum` (`sha256:`) and optional `integrity.signature` (`sha256:` or `hmac-sha256:` with `AGENT_PACKS_TRUST_KEY`). Checksums are verified after skill materialization.
 

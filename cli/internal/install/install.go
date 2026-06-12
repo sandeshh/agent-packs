@@ -331,6 +331,10 @@ func ListInstalledReceipts(target string) ([]model.InstalledSummary, error) {
 }
 
 func Uninstall(target, packID string, out io.Writer) error {
+	return UninstallWithOptions(target, packID, false, out)
+}
+
+func UninstallWithOptions(target, packID string, executePlugins bool, out io.Writer) error {
 	absTarget, err := filepath.Abs(util.ExpandHome(target))
 	if err != nil {
 		return err
@@ -347,7 +351,14 @@ func Uninstall(target, packID string, out io.Writer) error {
 			}
 			fmt.Fprintf(out, "Removed skill: %s\n", item.Destination)
 		} else if item.Type == "plugin" {
-			fmt.Fprintf(out, "Plugin requires native uninstall/manual cleanup: %s\n", item.Name)
+			result := uninstallPlugin(item, executePlugins)
+			if result.Status == "uninstalled" {
+				fmt.Fprintf(out, "Uninstalled plugin: %s\n", item.Name)
+			} else if result.Status == "pending" {
+				fmt.Fprintf(out, "Plugin requires native uninstall/manual cleanup: %s\n", item.Name)
+			} else if result.Status == "failed" {
+				return fmt.Errorf("plugin uninstall failed for %s: %s", item.Name, result.Reason)
+			}
 		}
 	}
 	_ = os.RemoveAll(filepath.Join(absTarget, "packs", packID))

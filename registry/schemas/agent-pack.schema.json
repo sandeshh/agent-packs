@@ -272,6 +272,9 @@
         "command": {
           "type": "string"
         },
+        "uninstall": {
+          "type": "string"
+        },
         "target": {
           "type": "string"
         }

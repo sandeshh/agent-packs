@@ -131,6 +131,9 @@ func ListInstalledReceipts(target string) ([]InstalledSummary, error) {
 func Uninstall(target, packID string, out io.Writer) error {
 	return install.Uninstall(target, packID, out)
 }
+func UninstallWithOptions(target, packID string, executePlugins bool, out io.Writer) error {
+	return install.UninstallWithOptions(target, packID, executePlugins, out)
+}
 func Outdated(registry, target string, out io.Writer) error {
 	return install.Outdated(registry, target, out)
 }
@@ -141,7 +144,7 @@ func PackDiff(registry, target, packRef string, out io.Writer) error {
 	return install.PackDiff(registry, target, packRef, out)
 }
 func DriftCheck(target string, out io.Writer) error { return install.DriftCheck(target, out) }
-func CacheInfo(home string, out io.Writer) error   { return install.CacheInfo(home, out) }
+func CacheInfo(home string, out io.Writer) error    { return install.CacheInfo(home, out) }
 func CachePrune(home string, clean bool, out io.Writer) error {
 	return install.CachePrune(home, clean, out)
 }

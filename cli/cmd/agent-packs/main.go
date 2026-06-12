@@ -237,16 +237,17 @@ func runUninstall(defaultTarget string, args []string) error {
 	flags := flag.NewFlagSet("uninstall", flag.ContinueOnError)
 	flags.SetOutput(os.Stderr)
 	target := flags.String("target", defaultTarget, "installation target directory")
+	executePlugins := flags.Bool("execute-plugins", false, "run native plugin uninstall commands")
 	if err := flags.Parse(normalizeTargetArgs(args)); err != nil {
 		return err
 	}
 	remaining := flags.Args()
 	if len(remaining) < 1 {
-		return fmt.Errorf("usage: agent-packs uninstall <pack-id>... [--target dir]")
+		return fmt.Errorf("usage: agent-packs uninstall <pack-id>... [--target dir] [--execute-plugins]")
 	}
 	for index, packRef := range remaining {
 		printLifecycleHeader("Uninstalling", packRef, index, len(remaining))
-		if err := agentpacks.Uninstall(*target, packRef, os.Stdout); err != nil {
+		if err := agentpacks.UninstallWithOptions(*target, packRef, *executePlugins, os.Stdout); err != nil {
 			return err
 		}
 	}

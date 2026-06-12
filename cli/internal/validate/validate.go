@@ -165,6 +165,9 @@ func ValidateCapability(capability model.Capability, prefix string) []string {
 		if capability.Install != nil && capability.Install["command"] != "" && !capability.RequiresExecution {
 			errs = append(errs, prefix+".requiresExecution must be true when install.command is set")
 		}
+		if capability.Install != nil && capability.Install["uninstall"] != "" && !capability.RequiresExecution {
+			errs = append(errs, prefix+".requiresExecution must be true when install.uninstall is set")
+		}
 	}
 	return errs
 }
