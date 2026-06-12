@@ -111,8 +111,17 @@ func Install(registry, home, packRef, target, agent, only string, executePlugins
 func InstallWithOptions(registry, home, packRef, target, agent, only string, executePlugins, dryRun bool, options InstallOptions, out io.Writer) error {
 	return install.InstallWithOptions(registry, home, packRef, target, agent, only, executePlugins, dryRun, options, out)
 }
+func InstallStandalone(registry, ref, kind, target, agent string, executePlugins, dryRun bool, options InstallOptions, out io.Writer) error {
+	return install.InstallStandalone(registry, ref, kind, target, agent, executePlugins, dryRun, options, out)
+}
+func InstallStandaloneWithOverrides(registry, ref, kind, target, agent string, executePlugins, dryRun bool, options InstallOptions, installOverrides map[string]string, out io.Writer) error {
+	return install.InstallStandaloneWithOverrides(registry, ref, kind, target, agent, executePlugins, dryRun, options, installOverrides, out)
+}
 func Upgrade(registry, home, packRef, target string, executePlugins bool, out io.Writer) error {
 	return install.Upgrade(registry, home, packRef, target, executePlugins, out)
+}
+func UpgradeStandalone(target, id, kind string, executePlugins bool, out io.Writer) error {
+	return install.UpgradeStandalone(target, id, kind, executePlugins, out)
 }
 func Rollback(target, packID string, out io.Writer) error {
 	return install.Rollback(target, packID, out)
@@ -121,6 +130,9 @@ func ExecutePlan(p Plan, executePlugins bool) Plan { return install.ExecutePlan(
 func WriteReceipt(target string, pack Pack, p Plan) (string, error) {
 	return install.WriteReceipt(target, pack, p)
 }
+func WriteStandaloneReceipt(target, kind, id string, pack Pack, p Plan) (string, error) {
+	return install.WriteStandaloneReceipt(target, kind, id, pack, p)
+}
 func LoadReceipt(path string) (Receipt, error)         { return install.LoadReceipt(path) }
 func WriteLockfile(packDir string, pack Pack) error    { return install.WriteLockfile(packDir, pack) }
 func LoadLockfile(path string) (Lockfile, error)       { return install.LoadLockfile(path) }
@@ -128,11 +140,17 @@ func ListInstalled(target string, out io.Writer) error { return install.ListInst
 func ListInstalledReceipts(target string) ([]InstalledSummary, error) {
 	return install.ListInstalledReceipts(target)
 }
+func ListStandalone(target, kind string, out io.Writer) error {
+	return install.ListStandalone(target, kind, out)
+}
 func Uninstall(target, packID string, out io.Writer) error {
 	return install.Uninstall(target, packID, out)
 }
 func UninstallWithOptions(target, packID string, executePlugins bool, out io.Writer) error {
 	return install.UninstallWithOptions(target, packID, executePlugins, out)
+}
+func UninstallStandalone(target, id, kind string, executePlugins bool, out io.Writer) error {
+	return install.UninstallStandalone(target, id, kind, executePlugins, out)
 }
 func Outdated(registry, target string, out io.Writer) error {
 	return install.Outdated(registry, target, out)

@@ -22,6 +22,8 @@ Implemented commands:
 - `agent-packs search [query] [--json]`
 - `agent-packs show <pack> [--json]`
 - `agent-packs install <pack|registry/pack>`
+- `agent-packs skills install <skill-id|path>`
+- `agent-packs plugins install <plugin-id|path>`
 - `agent-packs list [--json]`
 - `agent-packs uninstall <pack>`
 - `agent-packs upgrade <pack>`
@@ -84,6 +86,8 @@ CI (`.github/workflows/ci.yml`) runs Go and Python tests, JSON Schema validation
 ## Security Posture
 
 Plugin install and uninstall commands are not executed unless the user passes `--execute-plugins`. Plugin execution uses a timeout, respects `AGENT_PACKS_PLUGIN_CWD`, and supports structured handlers for `claude-marketplace` and `manual` lifecycle methods.
+
+Standalone `skills` and `plugins` commands write receipts under `<target>/receipts/skills/` and `<target>/receipts/plugins/`, keeping independent capability lifecycle state separate from pack receipts.
 
 Plugin capabilities with install or uninstall commands should set `requiresExecution: true` and should include trust metadata such as `trust: "official"` or `trust: "community"`.
 

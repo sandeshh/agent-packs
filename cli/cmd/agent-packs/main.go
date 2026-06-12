@@ -38,6 +38,10 @@ func main() {
 		err = runShow(registry, os.Args[2:])
 	case "install":
 		err = runInstall(registry, defaultTarget, os.Args[2:])
+	case "skills":
+		err = runStandaloneLifecycle(registry, defaultTarget, "skills", os.Args[2:])
+	case "plugins":
+		err = runStandaloneLifecycle(registry, defaultTarget, "plugins", os.Args[2:])
 	case "list":
 		err = runList(defaultTarget, os.Args[2:])
 	case "outdated":
@@ -231,6 +235,161 @@ func runList(defaultTarget string, args []string) error {
 		return output.Encode(os.Stdout, receipts)
 	}
 	return agentpacks.ListInstalled(*target, os.Stdout)
+}
+
+func runStandaloneLifecycle(registry, defaultTarget, kind string, args []string) error {
+	if len(args) < 1 {
+		return fmt.Errorf("usage: agent-packs %s <install|list|upgrade|uninstall> ...", kind)
+	}
+	switch args[0] {
+	case "install", "add":
+		return runStandaloneInstall(registry, defaultTarget, kind, args[1:])
+	case "list", "ls":
+		return runStandaloneList(defaultTarget, kind, args[1:])
+	case "upgrade", "update":
+		return runStandaloneUpgrade(defaultTarget, kind, args[1:])
+	case "uninstall", "remove", "rm":
+		return runStandaloneUninstall(defaultTarget, kind, args[1:])
+	default:
+		return fmt.Errorf("usage: agent-packs %s <install|list|upgrade|uninstall> ...", kind)
+	}
+}
+
+func runStandaloneInstall(registry, defaultTarget, kind string, args []string) error {
+	flags := flag.NewFlagSet(kind+" install", flag.ContinueOnError)
+	flags.SetOutput(os.Stderr)
+	target := flags.String("target", defaultTarget, "installation target directory")
+	agent := flags.String("agent", "generic", "target agent/tool")
+	targetTool := flags.String("target-tool", "", "target tool alias for --agent")
+	dryRun := flags.Bool("dry-run", false, "print installation plan without writing files")
+	executePlugins := flags.Bool("execute-plugins", false, "run native plugin installation commands")
+	modeDefault := "copy"
+	if kind == "plugins" {
+		modeDefault = "native"
+	}
+	mode := flags.String("mode", modeDefault, "sync mode: reference, symlink, copy, or native")
+	onConflict := flags.String("on-conflict", "skip", "conflict policy: skip, overwrite, or backup")
+	project := flags.String("project", "", "project directory target")
+	global := flags.Bool("global", false, "install into the configured global target")
+	method := flags.String("method", "", "plugin install method")
+	pkg := flags.String("package", "", "plugin package name")
+	marketplace := flags.String("marketplace", "", "plugin marketplace name")
+	command := flags.String("command", "", "plugin install command")
+	uninstallCommand := flags.String("uninstall-command", "", "plugin uninstall command")
+	if err := flags.Parse(normalizeInstallArgs(args)); err != nil {
+		return err
+	}
+	remaining := flags.Args()
+	if len(remaining) < 1 {
+		return fmt.Errorf("usage: agent-packs %s install <id-or-path>... [--target dir] [--agent name] [--mode mode] [--dry-run]", kind)
+	}
+	if *targetTool != "" {
+		*agent = *targetTool
+	}
+	*agent = agentpacks.NormalizeAgent(*agent)
+	if !agentpacks.ValidAgent(*agent) {
+		return fmt.Errorf("invalid agent %q: run `agent-packs doctor targets` for supported tools", *agent)
+	}
+	if *mode != "reference" && *mode != "symlink" && *mode != "copy" && *mode != "native" {
+		return fmt.Errorf("invalid --mode %q: expected reference, symlink, copy, or native", *mode)
+	}
+	if kind == "plugins" && *mode != "reference" && *mode != "native" {
+		return fmt.Errorf("invalid --mode %q for plugins: expected reference or native", *mode)
+	}
+	if *onConflict != "skip" && *onConflict != "overwrite" && *onConflict != "backup" {
+		return fmt.Errorf("invalid --on-conflict %q: expected skip, overwrite, or backup", *onConflict)
+	}
+	installTarget := *target
+	scope := "target"
+	if *project != "" {
+		installTarget = *project
+		scope = "project"
+	}
+	if *global {
+		installTarget = *target
+		scope = "global"
+	}
+	options := agentpacks.InstallOptions{Mode: *mode, OnConflict: *onConflict, Scope: scope}
+	installOverrides := map[string]string{}
+	if kind == "plugins" {
+		installOverrides["method"] = *method
+		installOverrides["package"] = *pkg
+		installOverrides["marketplace"] = *marketplace
+		installOverrides["command"] = *command
+		installOverrides["uninstall"] = *uninstallCommand
+	}
+	for index, ref := range remaining {
+		printLifecycleHeader("Installing "+singularStandaloneKind(kind), ref, index, len(remaining))
+		if err := agentpacks.InstallStandaloneWithOverrides(registry, ref, kind, installTarget, *agent, *executePlugins, *dryRun, options, installOverrides, os.Stdout); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func runStandaloneList(defaultTarget, kind string, args []string) error {
+	flags := flag.NewFlagSet(kind+" list", flag.ContinueOnError)
+	flags.SetOutput(os.Stderr)
+	target := flags.String("target", defaultTarget, "installation target directory")
+	if err := flags.Parse(normalizeTargetArgs(args)); err != nil {
+		return err
+	}
+	if len(flags.Args()) != 0 {
+		return fmt.Errorf("usage: agent-packs %s list [--target dir]", kind)
+	}
+	return agentpacks.ListStandalone(*target, kind, os.Stdout)
+}
+
+func runStandaloneUpgrade(defaultTarget, kind string, args []string) error {
+	flags := flag.NewFlagSet(kind+" upgrade", flag.ContinueOnError)
+	flags.SetOutput(os.Stderr)
+	target := flags.String("target", defaultTarget, "installation target directory")
+	executePlugins := flags.Bool("execute-plugins", false, "run native plugin installation commands")
+	if err := flags.Parse(normalizeTargetArgs(args)); err != nil {
+		return err
+	}
+	remaining := flags.Args()
+	if len(remaining) < 1 {
+		return fmt.Errorf("usage: agent-packs %s upgrade <id>... [--target dir]", kind)
+	}
+	for index, id := range remaining {
+		printLifecycleHeader("Upgrading "+singularStandaloneKind(kind), id, index, len(remaining))
+		if err := agentpacks.UpgradeStandalone(*target, id, kind, *executePlugins, os.Stdout); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func runStandaloneUninstall(defaultTarget, kind string, args []string) error {
+	flags := flag.NewFlagSet(kind+" uninstall", flag.ContinueOnError)
+	flags.SetOutput(os.Stderr)
+	target := flags.String("target", defaultTarget, "installation target directory")
+	executePlugins := flags.Bool("execute-plugins", false, "run native plugin uninstall commands")
+	if err := flags.Parse(normalizeTargetArgs(args)); err != nil {
+		return err
+	}
+	remaining := flags.Args()
+	if len(remaining) < 1 {
+		return fmt.Errorf("usage: agent-packs %s uninstall <id>... [--target dir] [--execute-plugins]", kind)
+	}
+	for index, id := range remaining {
+		printLifecycleHeader("Uninstalling "+singularStandaloneKind(kind), id, index, len(remaining))
+		if err := agentpacks.UninstallStandalone(*target, id, kind, *executePlugins, os.Stdout); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func singularStandaloneKind(kind string) string {
+	if kind == "skills" {
+		return "skill"
+	}
+	if kind == "plugins" {
+		return "plugin"
+	}
+	return "capability"
 }
 
 func runUninstall(defaultTarget string, args []string) error {
@@ -671,7 +830,7 @@ func normalizeInstallArgs(args []string) []string {
 			flags = append(flags, arg)
 			continue
 		}
-		if arg == "--target" || arg == "--agent" || arg == "--target-tool" || arg == "--only" || arg == "--mode" || arg == "--on-conflict" || arg == "--project" || arg == "--scope" {
+		if arg == "--target" || arg == "--agent" || arg == "--target-tool" || arg == "--only" || arg == "--mode" || arg == "--on-conflict" || arg == "--project" || arg == "--scope" || arg == "--method" || arg == "--package" || arg == "--marketplace" || arg == "--command" || arg == "--uninstall-command" {
 			flags = append(flags, arg)
 			if i+1 < len(args) {
 				flags = append(flags, args[i+1])
@@ -679,7 +838,7 @@ func normalizeInstallArgs(args []string) []string {
 			}
 			continue
 		}
-		if strings.HasPrefix(arg, "--target=") || strings.HasPrefix(arg, "--agent=") || strings.HasPrefix(arg, "--target-tool=") || strings.HasPrefix(arg, "--only=") || strings.HasPrefix(arg, "--mode=") || strings.HasPrefix(arg, "--on-conflict=") || strings.HasPrefix(arg, "--project=") || strings.HasPrefix(arg, "--scope=") {
+		if strings.HasPrefix(arg, "--target=") || strings.HasPrefix(arg, "--agent=") || strings.HasPrefix(arg, "--target-tool=") || strings.HasPrefix(arg, "--only=") || strings.HasPrefix(arg, "--mode=") || strings.HasPrefix(arg, "--on-conflict=") || strings.HasPrefix(arg, "--project=") || strings.HasPrefix(arg, "--scope=") || strings.HasPrefix(arg, "--method=") || strings.HasPrefix(arg, "--package=") || strings.HasPrefix(arg, "--marketplace=") || strings.HasPrefix(arg, "--command=") || strings.HasPrefix(arg, "--uninstall-command=") {
 			flags = append(flags, arg)
 			continue
 		}
@@ -741,6 +900,10 @@ func normalizeTargetArgs(args []string) []string {
 	positionals := []string{}
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
+		if arg == "--execute-plugins" {
+			flags = append(flags, arg)
+			continue
+		}
 		if arg == "--target" {
 			flags = append(flags, arg)
 			if i+1 < len(args) {
@@ -799,7 +962,7 @@ _agent_packs() {
         cword=$COMP_CWORD
     }
 
-    local subcommands="search show install list outdated upgrade rollback uninstall status audit verify lint diff tree deps compat scan import validate index registry doctor new init publish policy licenses attribution resolve version completion help"
+    local subcommands="search show install skills plugins list outdated upgrade rollback uninstall status audit verify lint diff tree deps compat scan import validate index registry doctor new init publish policy licenses attribution resolve version completion help"
 
     if [[ $cword -eq 1 ]]; then
         COMPREPLY=($(compgen -W "$subcommands" -- "$cur"))
@@ -833,6 +996,9 @@ _agent_packs() {
         policy)
             COMPREPLY=($(compgen -W "check" -- "$cur"))
             ;;
+        skills|plugins)
+            COMPREPLY=($(compgen -W "install list upgrade uninstall" -- "$cur"))
+            ;;
     esac
 }
 complete -F _agent_packs agent-packs
@@ -857,6 +1023,8 @@ _agent_packs() {
                 'search:search the registry for packs'
                 'show:show details of a pack'
                 'install:install a pack into an agent tool'
+                'skills:manage standalone Agent Skills'
+                'plugins:manage standalone plugins'
                 'list:list installed packs'
                 'outdated:check for available updates'
                 'upgrade:upgrade an installed pack'
@@ -923,12 +1091,14 @@ _agent_packs "$@"
 const fishCompletion = `# agent-packs fish completion
 # Place in ~/.config/fish/completions/agent-packs.fish
 
-set -l __ap_subcommands search show install list outdated upgrade rollback uninstall status audit verify lint diff tree deps compat validate index registry doctor new init publish policy licenses attribution resolve version completion help
+set -l __ap_subcommands search show install skills plugins list outdated upgrade rollback uninstall status audit verify lint diff tree deps compat validate index registry doctor new init publish policy licenses attribution resolve version completion help
 
 # Subcommand completions
 complete -f -c agent-packs -n "not __fish_seen_subcommand_from $__ap_subcommands" -a search     -d 'Search the registry for packs'
 complete -f -c agent-packs -n "not __fish_seen_subcommand_from $__ap_subcommands" -a show       -d 'Show details of a pack'
 complete -f -c agent-packs -n "not __fish_seen_subcommand_from $__ap_subcommands" -a install    -d 'Install a pack'
+complete -f -c agent-packs -n "not __fish_seen_subcommand_from $__ap_subcommands" -a skills     -d 'Manage standalone Agent Skills'
+complete -f -c agent-packs -n "not __fish_seen_subcommand_from $__ap_subcommands" -a plugins    -d 'Manage standalone plugins'
 complete -f -c agent-packs -n "not __fish_seen_subcommand_from $__ap_subcommands" -a list       -d 'List installed packs'
 complete -f -c agent-packs -n "not __fish_seen_subcommand_from $__ap_subcommands" -a outdated   -d 'Check for available updates'
 complete -f -c agent-packs -n "not __fish_seen_subcommand_from $__ap_subcommands" -a upgrade    -d 'Upgrade an installed pack'
@@ -953,6 +1123,7 @@ complete -f -c agent-packs \
 
 # Shell name for completion subcommand
 complete -f -c agent-packs -n "__fish_seen_subcommand_from completion" -a "bash zsh fish"
+complete -f -c agent-packs -n "__fish_seen_subcommand_from skills plugins" -a "install list upgrade uninstall"
 
 # Shared flags
 complete -f -c agent-packs -l agent        -a "claude codex cursor gemini copilot opencode goose" -d 'Target agent tool'
@@ -984,6 +1155,8 @@ func usage() {
 	fmt.Fprintln(os.Stderr, "  agent-packs search [query]")
 	fmt.Fprintln(os.Stderr, "  agent-packs show <pack-id>")
 	fmt.Fprintln(os.Stderr, "  agent-packs install <pack-id|registry/pack-id>... [--target dir] [--agent tool|--target-tool tool] [--only all|skills|plugins] [--mode reference|symlink|copy|native] [--on-conflict skip|overwrite|backup] [--project dir|--global] [--dry-run] [--execute-plugins]")
+	fmt.Fprintln(os.Stderr, "  agent-packs skills install|list|upgrade|uninstall ...")
+	fmt.Fprintln(os.Stderr, "  agent-packs plugins install|list|upgrade|uninstall ... [--execute-plugins]")
 	fmt.Fprintln(os.Stderr, "  agent-packs list [--target dir]")
 	fmt.Fprintln(os.Stderr, "  agent-packs update|outdated|upgrade|cache ...")
 	fmt.Fprintln(os.Stderr, "  agent-packs upgrade <pack-id>... [--target dir] [--execute-plugins]")

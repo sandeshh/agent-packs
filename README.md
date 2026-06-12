@@ -66,6 +66,8 @@ cli/bin/agent-packs show frontend-engineer
 cli/bin/agent-packs install frontend-engineer --target ./sandbox
 cli/bin/agent-packs install frontend-engineer pr-review popular-engineering-skills --target ./sandbox
 cli/bin/agent-packs install frontend-engineer --agent codex --only skills --dry-run
+cli/bin/agent-packs skills install ./my-skill --agent codex --mode copy --target ./sandbox
+cli/bin/agent-packs plugins install claude-code-review --mode native --method claude-marketplace --marketplace claude-plugins-official --package code-review --execute-plugins
 cli/bin/agent-packs init --agent codex --mode reference --scope project .
 cli/bin/agent-packs version
 ```
@@ -163,6 +165,7 @@ Agent Packs orchestrates native install flows instead of replacing them.
 - Installed packs write receipts under `<target>/receipts/`.
 - Installed packs write lockfiles under `<target>/packs/<pack-id>/agent-pack.lock`.
 - `uninstall` removes installed inline skill folders and receipts. Plugin cleanup commands run only with `uninstall --execute-plugins`; otherwise plugins are reported for native/manual cleanup.
+- Standalone `skills` and `plugins` commands manage independent capabilities under `<target>/receipts/skills/` and `<target>/receipts/plugins/` without requiring a pack wrapper.
 
 ## Lifecycle Commands
 
@@ -175,6 +178,8 @@ Agent Packs supports a basic package-manager lifecycle:
 - `upgrade <pack...>`: re-installs one or more packs using each pack's prior receipt settings.
 - `rollback <pack...>`: restores one or more previous receipt-backed install states when history exists.
 - `uninstall <pack...>`: removes one or more installed packs, including installed inline skill folders, optional plugin cleanup commands, and receipts.
+- `skills install|list|upgrade|uninstall`: manages independent registry or local Agent Skills without wrapping them in a pack.
+- `plugins install|list|upgrade|uninstall`: manages independent registry or local plugins; pass `--method`, `--package`, `--marketplace`, `--command`, or `--uninstall-command` to store native lifecycle metadata outside a pack.
 - `audit <pack>`: supply-chain SBOM report (`--json` supported).
 - `version`: prints CLI version (`--json` supported).
 - `init [dir]`: writes `.agent-packs.yaml` project defaults.

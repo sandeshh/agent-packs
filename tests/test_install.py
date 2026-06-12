@@ -37,6 +37,17 @@ class InstallCommandTest(unittest.TestCase):
         path.write_text(json.dumps(pack, indent=2) + "\n", encoding="utf-8")
         return path
 
+    def write_registry_plugin(self, registry, plugin_id):
+        plugin_dir = registry.parent / "plugins" / plugin_id / ".claude-plugin"
+        plugin_dir.mkdir(parents=True)
+        manifest = {
+            "name": plugin_id,
+            "displayName": "Standalone Plugin",
+            "version": "0.1.0",
+            "description": "A standalone plugin.",
+        }
+        (plugin_dir / "plugin.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+
     def test_dry_run_prints_skill_and_plugin_plan_without_writing_receipt(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             temp = Path(temp_dir)
@@ -186,6 +197,95 @@ class InstallCommandTest(unittest.TestCase):
             self.assertEqual(capability["type"], "plugin")
             self.assertEqual(capability["status"], "pending")
             self.assertIn("--execute-plugins", capability["reason"])
+
+    def test_skills_command_manages_standalone_local_skill(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            skill = temp / "skill"
+            skill.mkdir()
+            (skill / "SKILL.md").write_text(
+                "---\nname: Standalone Skill\ndescription: A standalone skill.\n---\n# Standalone Skill\n",
+                encoding="utf-8",
+            )
+            registry = temp / "registry" / "packs"
+            target = temp / "install"
+            registry.mkdir(parents=True)
+
+            install = self.run_cli("skills", "install", str(skill), "--agent", "codex", "--mode", "copy", registry=registry, target=target)
+            self.assertEqual(install.returncode, 0, install.stderr)
+            self.assertTrue((target / ".codex" / "skills" / "standalone-skill" / "SKILL.md").exists())
+            self.assertTrue((target / "receipts" / "skills" / "standalone-skill.json").exists())
+            self.assertFalse((target / "receipts" / "standalone-skill.json").exists())
+
+            listed = self.run_cli("skills", "list", registry=registry, target=target)
+            self.assertEqual(listed.returncode, 0, listed.stderr)
+            self.assertIn("standalone-skill", listed.stdout)
+
+            uninstall = self.run_cli("skills", "uninstall", "standalone-skill", registry=registry, target=target)
+            self.assertEqual(uninstall.returncode, 0, uninstall.stderr)
+            self.assertFalse((target / ".codex" / "skills" / "standalone-skill").exists())
+            self.assertFalse((target / "receipts" / "skills" / "standalone-skill.json").exists())
+
+    def test_plugins_command_manages_standalone_registry_plugin_with_overrides(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            registry = temp / "registry" / "packs"
+            target = temp / "install"
+            registry.mkdir(parents=True)
+            self.write_registry_plugin(registry, "standalone-plugin")
+            env = os.environ.copy()
+            env["AGENT_PACKS_REGISTRY"] = str(registry)
+            env["AGENT_PACKS_PLUGIN_CWD"] = str(temp)
+
+            install = subprocess.run(
+                [
+                    str(CLI),
+                    "plugins",
+                    "install",
+                    "standalone-plugin",
+                    "--mode",
+                    "native",
+                    "--execute-plugins",
+                    "--method",
+                    "manual",
+                    "--command",
+                    "printf installed > plugin-install.txt",
+                    "--uninstall-command",
+                    "printf cleaned > plugin-cleanup.txt",
+                    "--target",
+                    str(target),
+                ],
+                cwd=ROOT,
+                env=env,
+                text=True,
+                capture_output=True,
+            )
+            self.assertEqual(install.returncode, 0, install.stderr)
+            self.assertEqual((temp / "plugin-install.txt").read_text(encoding="utf-8"), "installed")
+            self.assertTrue((target / "receipts" / "plugins" / "standalone-plugin.json").exists())
+
+            listed = self.run_cli("plugins", "list", registry=registry, target=target)
+            self.assertEqual(listed.returncode, 0, listed.stderr)
+            self.assertIn("standalone-plugin", listed.stdout)
+
+            uninstall = subprocess.run(
+                [
+                    str(CLI),
+                    "plugins",
+                    "uninstall",
+                    "standalone-plugin",
+                    "--execute-plugins",
+                    "--target",
+                    str(target),
+                ],
+                cwd=ROOT,
+                env=env,
+                text=True,
+                capture_output=True,
+            )
+            self.assertEqual(uninstall.returncode, 0, uninstall.stderr)
+            self.assertEqual((temp / "plugin-cleanup.txt").read_text(encoding="utf-8"), "cleaned")
+            self.assertFalse((target / "receipts" / "plugins" / "standalone-plugin.json").exists())
 
 
 def example_pack(skill_source):

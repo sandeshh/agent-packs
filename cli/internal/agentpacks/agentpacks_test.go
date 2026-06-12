@@ -403,6 +403,95 @@ func TestUninstallExecutesPluginCleanupWhenOptedIn(t *testing.T) {
 	}
 }
 
+func TestStandaloneSkillLifecycleUsesSkillReceipts(t *testing.T) {
+	temp := t.TempDir()
+	skill := filepath.Join(temp, "skill")
+	if err := os.MkdirAll(skill, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	skillBody := "---\nname: Standalone Skill\ndescription: A standalone skill.\n---\n# Standalone Skill\n"
+	if err := os.WriteFile(filepath.Join(skill, "SKILL.md"), []byte(skillBody), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var output strings.Builder
+	err := InstallStandalone(filepath.Join(temp, "registry", "packs"), skill, "skills", temp, "codex", false, false, InstallOptions{Mode: "copy", OnConflict: "overwrite"}, &output)
+	if err != nil {
+		t.Fatal(err)
+	}
+	installed := filepath.Join(temp, ".codex", "skills", "standalone-skill", "SKILL.md")
+	if _, err := os.Stat(installed); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(temp, "receipts", "standalone-skill.json")); !os.IsNotExist(err) {
+		t.Fatalf("standalone skill wrote pack receipt: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(temp, "receipts", "skills", "standalone-skill.json")); err != nil {
+		t.Fatalf("standalone skill receipt missing: %v", err)
+	}
+
+	output.Reset()
+	if err := ListStandalone(temp, "skills", &output); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(output.String(), "standalone-skill") {
+		t.Fatalf("standalone skill missing from list: %s", output.String())
+	}
+
+	output.Reset()
+	if err := UninstallStandalone(temp, "standalone-skill", "skills", false, &output); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(installed); !os.IsNotExist(err) {
+		t.Fatalf("standalone skill still installed: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(temp, "receipts", "skills", "standalone-skill.json")); !os.IsNotExist(err) {
+		t.Fatalf("standalone skill receipt still exists: %v", err)
+	}
+}
+
+func TestStandalonePluginLifecycleExecutesCleanupWhenOptedIn(t *testing.T) {
+	temp := t.TempDir()
+	pack := Pack{
+		ID:          "unused",
+		Name:        "Unused",
+		Version:     "0.1.0",
+		Description: "Unused pack.",
+		Capabilities: []Capability{{
+			Type:    "plugin",
+			Name:    "Standalone Plugin",
+			Source:  "https://example.com/plugin",
+			Format:  "anthropic-plugin",
+			Install: map[string]string{"method": "manual", "command": "printf installed > plugin-install.txt", "uninstall": "printf cleaned > plugin-cleanup.txt"},
+		}},
+	}
+	capability := pack.Capabilities[0]
+	standalone := Pack{ID: "standalone-plugin", Name: capability.Name, Version: "0.1.0", Description: "Standalone plugin.", Capabilities: []Capability{capability}}
+	plan := BuildInstallPlanWithOptions(standalone, temp, "codex", "plugins", InstallOptions{Mode: "native", OnConflict: "overwrite"})
+	t.Setenv("AGENT_PACKS_PLUGIN_CWD", temp)
+	result := ExecutePlan(plan, true)
+	if _, err := WriteStandaloneReceipt(temp, "plugins", "standalone-plugin", standalone, result); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(temp, "plugin-install.txt")); err != nil {
+		t.Fatal(err)
+	}
+
+	var output strings.Builder
+	if err := UninstallStandalone(temp, "standalone-plugin", "plugins", true, &output); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(filepath.Join(temp, "plugin-cleanup.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != "cleaned" {
+		t.Fatalf("unexpected plugin cleanup marker: %q", string(data))
+	}
+	if _, err := os.Stat(filepath.Join(temp, "receipts", "plugins", "standalone-plugin.json")); !os.IsNotExist(err) {
+		t.Fatalf("standalone plugin receipt still exists: %v", err)
+	}
+}
+
 func writeTestPack(t *testing.T, registry string, pack Pack) {
 	t.Helper()
 	data, err := json.MarshalIndent(pack, "", "  ")
