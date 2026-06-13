@@ -15,12 +15,13 @@ import (
 const DefaultFilename = ".agent-packs.yaml"
 
 type ProjectConfig struct {
-	Agent      string `yaml:"agent,omitempty" json:"agent,omitempty"`
-	Mode       string `yaml:"mode,omitempty" json:"mode,omitempty"`
-	OnConflict string `yaml:"onConflict,omitempty" json:"onConflict,omitempty"`
-	Scope      string `yaml:"scope,omitempty" json:"scope,omitempty"`
-	Registry   string `yaml:"registry,omitempty" json:"registry,omitempty"`
-	Target     string `yaml:"target,omitempty" json:"target,omitempty"`
+	Agent      string   `yaml:"agent,omitempty" json:"agent,omitempty"`
+	Mode       string   `yaml:"mode,omitempty" json:"mode,omitempty"`
+	OnConflict string   `yaml:"onConflict,omitempty" json:"onConflict,omitempty"`
+	Scope      string   `yaml:"scope,omitempty" json:"scope,omitempty"`
+	Registry   string   `yaml:"registry,omitempty" json:"registry,omitempty"`
+	Target     string   `yaml:"target,omitempty" json:"target,omitempty"`
+	Packs      []string `yaml:"packs,omitempty" json:"packs,omitempty"`
 }
 
 type InitOptions struct {
@@ -95,6 +96,15 @@ func MergeInstallOptions(cfg ProjectConfig, options model.InstallOptions) model.
 		options.Scope = cfg.Scope
 	}
 	return options
+}
+
+func SaveProjectConfig(projectDir string, cfg ProjectConfig) error {
+	path := filepath.Join(util.ExpandHome(projectDir), DefaultFilename)
+	data, err := yaml.Marshal(cfg)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(path, data, 0o644)
 }
 
 func defaultString(value, fallback string) string {

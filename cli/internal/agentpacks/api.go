@@ -82,7 +82,12 @@ func PluginCapability(id, root string, manifest PluginManifest) Capability {
 }
 func LoadSkillManifest(path string) (SkillManifest, error)   { return reg.LoadSkillManifest(path) }
 func LoadPluginManifest(path string) (PluginManifest, error) { return reg.LoadPluginManifest(path) }
-func MatchPacks(registry, query string) ([]Pack, error)      { return reg.MatchPacks(registry, query) }
+type SearchFilter = reg.SearchFilter
+
+func MatchPacks(registry, query string) ([]Pack, error) { return reg.MatchPacks(registry, query) }
+func FilteredMatchPacks(registry, query string, f SearchFilter) ([]Pack, error) {
+	return reg.FilteredMatchPacks(registry, query, f)
+}
 func Search(registry, query string, out io.Writer) error     { return reg.Search(registry, query, out) }
 func Show(registry, id string, out io.Writer) error          { return reg.Show(registry, id, out) }
 func GenerateIndex(registry, outputPath string, out io.Writer) error {
@@ -161,7 +166,8 @@ func GetOutdatedReport(registry, target string) (OutdatedReport, error) {
 func PackDiff(registry, target, packRef string, out io.Writer) error {
 	return install.PackDiff(registry, target, packRef, out)
 }
-func DriftCheck(target string, out io.Writer) error { return install.DriftCheck(target, out) }
+func DriftCheck(target string, out io.Writer) error     { return install.DriftCheck(target, out) }
+func DriftCheckJSON(target string, out io.Writer) error { return install.DriftCheckJSON(target, out) }
 func CacheInfo(home string, out io.Writer) error    { return install.CacheInfo(home, out) }
 func CachePrune(home string, clean bool, out io.Writer) error {
 	return install.CachePrune(home, clean, out)
@@ -228,8 +234,14 @@ func PublishReportForRegistry(registry, policyPath string) (PublishReport, error
 }
 
 func ResolveSource(source string) SourceResolution { return resolve.ResolveSource(source) }
-func PrintTargetMatrix(out io.Writer) error        { return targets.PrintTargetMatrix(out) }
-func VersionString() string                        { return version.String() }
+func PrintTargetMatrix(out io.Writer) error { return targets.PrintTargetMatrix(out) }
+func RegisterCustomTargets(home string)     { targets.RegisterCustomTargets(home) }
+func AddCustomTarget(home, id, name, globalSkills, projectSkills string) error {
+	return targets.AddCustomTarget(home, id, name, globalSkills, projectSkills)
+}
+func RemoveCustomTarget(home, id string) error              { return targets.RemoveCustomTarget(home, id) }
+func ListCustomTargets(home string, out io.Writer) error    { return targets.ListCustomTargets(home, out) }
+func VersionString() string                                 { return version.String() }
 func InitProject(projectDir string, opts config.InitOptions) (string, error) {
 	return config.Init(projectDir, opts)
 }

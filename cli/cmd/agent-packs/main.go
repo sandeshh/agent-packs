@@ -4,12 +4,14 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
 
 	"github.com/sandeshh/agent-packs/cli/internal/agentpacks"
 	"github.com/sandeshh/agent-packs/cli/internal/output"
+	"gopkg.in/yaml.v3"
 )
 
 func main() {
@@ -22,6 +24,9 @@ func main() {
 	if defaultTarget == "" {
 		defaultTarget = ".agent-packs"
 	}
+
+	// Merge any user-registered custom targets into the target matrix.
+	agentpacks.RegisterCustomTargets(defaultTarget)
 
 	if len(os.Args) < 2 {
 		usage()
@@ -98,6 +103,14 @@ func main() {
 		err = runStatus(defaultTarget, os.Args[2:])
 	case "completion":
 		err = runCompletion(os.Args[2:])
+	case "sync":
+		err = runSync(registry, defaultTarget, os.Args[2:])
+	case "freeze":
+		err = runFreeze(defaultTarget, os.Args[2:])
+	case "export":
+		err = runExport(defaultTarget, os.Args[2:])
+	case "target":
+		err = runTarget(defaultTarget, os.Args[2:])
 	case "publish":
 		err = runPublish(registry, os.Args[2:])
 	case "help", "--help", "-h":
@@ -133,18 +146,34 @@ func extractJSONFlag(args []string) (bool, []string) {
 
 func runSearch(registry string, args []string) error {
 	asJSON, args := extractJSONFlag(args)
-	query := strings.Join(args, " ")
+	flags := flag.NewFlagSet("search", flag.ContinueOnError)
+	flags.SetOutput(os.Stderr)
+	tagFilter := flags.String("tag", "", "filter by tag")
+	categoryFilter := flags.String("category", "", "filter by category")
+	stabilityFilter := flags.String("stability", "", "filter by stability (experimental|stable|deprecated)")
+	if err := flags.Parse(args); err != nil {
+		return err
+	}
+	query := strings.Join(flags.Args(), " ")
+	f := agentpacks.SearchFilter{Tag: *tagFilter, Category: *categoryFilter, Stability: *stabilityFilter}
+	matches, err := agentpacks.FilteredMatchPacks(registry, query, f)
+	if err != nil {
+		return err
+	}
 	if asJSON {
-		matches, err := agentpacks.MatchPacks(registry, query)
-		if err != nil {
-			return err
-		}
 		if len(matches) == 0 {
 			return agentpacks.ErrNotFound
 		}
 		return output.Encode(os.Stdout, matches)
 	}
-	return agentpacks.Search(registry, query, os.Stdout)
+	if len(matches) == 0 {
+		fmt.Fprintln(os.Stdout, "No packs found.")
+		return agentpacks.ErrNotFound
+	}
+	for _, pack := range matches {
+		fmt.Fprintf(os.Stdout, "%s\t%s\t%s\n", pack.ID, pack.Name, strings.Join(pack.Tags, ", "))
+	}
+	return nil
 }
 
 func runShow(registry string, args []string) error {
@@ -176,12 +205,20 @@ func runInstall(registry, defaultTarget string, args []string) error {
 	onConflict := flags.String("on-conflict", "skip", "conflict policy: skip, overwrite, or backup")
 	project := flags.String("project", "", "project directory target")
 	global := flags.Bool("global", false, "install into the configured global target")
+	from := flags.String("from", "", "install packs listed in a YAML export file")
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
 	remaining := flags.Args()
+	if *from != "" {
+		extra, err := readPacksFromFile(*from)
+		if err != nil {
+			return err
+		}
+		remaining = append(extra, remaining...)
+	}
 	if len(remaining) < 1 {
-		return fmt.Errorf("usage: agent-packs install <pack-id|registry/pack-id>... [--target dir] [--agent name] [--only filter] [--dry-run] [--execute-plugins]")
+		return fmt.Errorf("usage: agent-packs install <pack-id>... [--from file] [--target dir] [--agent name] [--only filter] [--dry-run] [--execute-plugins]")
 	}
 	if *targetTool != "" {
 		*agent = *targetTool
@@ -604,9 +641,14 @@ func runCache(defaultTarget string, args []string) error {
 
 func runPolicy(registry string, args []string) error {
 	if len(args) != 3 || args[0] != "check" {
-		return fmt.Errorf("usage: agent-packs policy check <pack-id> <policy.json>")
+		return fmt.Errorf("usage: agent-packs policy check <pack-id> <policy.json|preset>")
 	}
-	return agentpacks.PolicyCheck(registry, args[1], args[2], os.Stdout)
+	policyArg := args[2]
+	// Resolve named presets from registry/policy/<name>.json
+	if !strings.Contains(policyArg, string(filepath.Separator)) && !strings.HasSuffix(policyArg, ".json") {
+		policyArg = filepath.Join(filepath.Dir(registry), "policy", policyArg+".json")
+	}
+	return agentpacks.PolicyCheck(registry, args[1], policyArg, os.Stdout)
 }
 
 func runLicenses(registry string, args []string) error {
@@ -830,7 +872,7 @@ func normalizeInstallArgs(args []string) []string {
 			flags = append(flags, arg)
 			continue
 		}
-		if arg == "--target" || arg == "--agent" || arg == "--target-tool" || arg == "--only" || arg == "--mode" || arg == "--on-conflict" || arg == "--project" || arg == "--scope" || arg == "--method" || arg == "--package" || arg == "--marketplace" || arg == "--command" || arg == "--uninstall-command" {
+		if arg == "--target" || arg == "--agent" || arg == "--target-tool" || arg == "--only" || arg == "--mode" || arg == "--on-conflict" || arg == "--project" || arg == "--scope" || arg == "--method" || arg == "--package" || arg == "--marketplace" || arg == "--command" || arg == "--uninstall-command" || arg == "--from" {
 			flags = append(flags, arg)
 			if i+1 < len(args) {
 				flags = append(flags, args[i+1])
@@ -838,7 +880,7 @@ func normalizeInstallArgs(args []string) []string {
 			}
 			continue
 		}
-		if strings.HasPrefix(arg, "--target=") || strings.HasPrefix(arg, "--agent=") || strings.HasPrefix(arg, "--target-tool=") || strings.HasPrefix(arg, "--only=") || strings.HasPrefix(arg, "--mode=") || strings.HasPrefix(arg, "--on-conflict=") || strings.HasPrefix(arg, "--project=") || strings.HasPrefix(arg, "--scope=") || strings.HasPrefix(arg, "--method=") || strings.HasPrefix(arg, "--package=") || strings.HasPrefix(arg, "--marketplace=") || strings.HasPrefix(arg, "--command=") || strings.HasPrefix(arg, "--uninstall-command=") {
+		if strings.HasPrefix(arg, "--target=") || strings.HasPrefix(arg, "--agent=") || strings.HasPrefix(arg, "--target-tool=") || strings.HasPrefix(arg, "--only=") || strings.HasPrefix(arg, "--mode=") || strings.HasPrefix(arg, "--on-conflict=") || strings.HasPrefix(arg, "--project=") || strings.HasPrefix(arg, "--scope=") || strings.HasPrefix(arg, "--method=") || strings.HasPrefix(arg, "--package=") || strings.HasPrefix(arg, "--marketplace=") || strings.HasPrefix(arg, "--command=") || strings.HasPrefix(arg, "--uninstall-command=") || strings.HasPrefix(arg, "--from=") {
 			flags = append(flags, arg)
 			continue
 		}
@@ -929,7 +971,9 @@ func runStatus(defaultTarget string, args []string) error {
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
-	_ = asJSON
+	if asJSON {
+		return agentpacks.DriftCheckJSON(*target, os.Stdout)
+	}
 	return agentpacks.DriftCheck(*target, os.Stdout)
 }
 
@@ -1138,6 +1182,143 @@ complete -f -c agent-packs -l global       -d 'Install into global target'
 complete -f -c agent-packs -l json         -d 'Output as JSON'
 `
 
+func runSync(registry, defaultTarget string, args []string) error {
+	flags := flag.NewFlagSet("sync", flag.ContinueOnError)
+	flags.SetOutput(os.Stderr)
+	target := flags.String("target", defaultTarget, "installation target directory")
+	agent := flags.String("agent", "generic", "target agent/tool")
+	mode := flags.String("mode", "reference", "sync mode: reference, symlink, copy, or native")
+	project := flags.String("project", ".", "project directory containing .agent-packs.yaml")
+	if err := flags.Parse(normalizeTargetArgs(args)); err != nil {
+		return err
+	}
+	if len(flags.Args()) != 0 {
+		return fmt.Errorf("usage: agent-packs sync [--project dir] [--target dir] [--agent tool] [--mode mode]")
+	}
+	*agent = agentpacks.NormalizeAgent(*agent)
+	return agentpacks.Sync(registry, *target, *project, *target, *agent, *mode, os.Stdout)
+}
+
+func runFreeze(defaultTarget string, args []string) error {
+	flags := flag.NewFlagSet("freeze", flag.ContinueOnError)
+	flags.SetOutput(os.Stderr)
+	target := flags.String("target", defaultTarget, "installation target directory")
+	project := flags.String("project", ".", "project directory containing .agent-packs.yaml")
+	if err := flags.Parse(normalizeTargetArgs(args)); err != nil {
+		return err
+	}
+	if len(flags.Args()) != 0 {
+		return fmt.Errorf("usage: agent-packs freeze [--target dir] [--project dir]")
+	}
+	return agentpacks.Freeze(*target, *project, os.Stdout)
+}
+
+func runExport(defaultTarget string, args []string) error {
+	flags := flag.NewFlagSet("export", flag.ContinueOnError)
+	flags.SetOutput(os.Stderr)
+	target := flags.String("target", defaultTarget, "installation target directory")
+	outFile := flags.String("output", "", "output file (default: stdout)")
+	if err := flags.Parse(normalizeTargetArgs(args)); err != nil {
+		return err
+	}
+	if len(flags.Args()) != 0 {
+		return fmt.Errorf("usage: agent-packs export [--target dir] [--output file]")
+	}
+	out := io.Writer(os.Stdout)
+	if *outFile != "" {
+		f, err := os.Create(*outFile)
+		if err != nil {
+			return err
+		}
+		defer f.Close()
+		out = f
+	}
+	return agentpacks.ExportPacks(*target, out)
+}
+
+func normalizeTargetCmdArgs(args []string) []string {
+	knownFlags := map[string]bool{
+		"--home": true, "--name": true, "--global": true, "--project": true,
+	}
+	flagsList := []string{}
+	positionals := []string{}
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		if knownFlags[arg] {
+			flagsList = append(flagsList, arg)
+			if i+1 < len(args) {
+				flagsList = append(flagsList, args[i+1])
+				i++
+			}
+			continue
+		}
+		for k := range knownFlags {
+			if strings.HasPrefix(arg, k+"=") {
+				flagsList = append(flagsList, arg)
+				goto next
+			}
+		}
+		positionals = append(positionals, arg)
+	next:
+	}
+	return append(flagsList, positionals...)
+}
+
+func runTarget(defaultTarget string, args []string) error {
+	if len(args) < 1 {
+		return fmt.Errorf("usage: agent-packs target <add|list|remove> ...")
+	}
+	sub := args[0]
+	normalized := normalizeTargetCmdArgs(args[1:])
+	flags := flag.NewFlagSet("target "+sub, flag.ContinueOnError)
+	flags.SetOutput(os.Stderr)
+	home := flags.String("home", defaultTarget, "agent-packs home directory")
+	switch sub {
+	case "add":
+		name := flags.String("name", "", "display name")
+		globalSkills := flags.String("global", "", "global skill directory (required)")
+		projectSkills := flags.String("project", "", "project skill directory (defaults to --global)")
+		if err := flags.Parse(normalized); err != nil {
+			return err
+		}
+		remaining := flags.Args()
+		if len(remaining) != 1 {
+			return fmt.Errorf("usage: agent-packs target add <id> --global <path> [--project <path>] [--name <name>]")
+		}
+		return agentpacks.AddCustomTarget(*home, remaining[0], *name, *globalSkills, *projectSkills)
+	case "remove":
+		if err := flags.Parse(normalized); err != nil {
+			return err
+		}
+		remaining := flags.Args()
+		if len(remaining) != 1 {
+			return fmt.Errorf("usage: agent-packs target remove <id>")
+		}
+		return agentpacks.RemoveCustomTarget(*home, remaining[0])
+	case "list":
+		if err := flags.Parse(normalized); err != nil {
+			return err
+		}
+		return agentpacks.ListCustomTargets(*home, os.Stdout)
+	default:
+		return fmt.Errorf("unknown target command: %s", sub)
+	}
+}
+
+func readPacksFromFile(path string) ([]string, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("--from: %w", err)
+	}
+	var f struct {
+		Packs []string `yaml:"packs"`
+	}
+	if err := yaml.Unmarshal(data, &f); err != nil {
+		return nil, fmt.Errorf("--from %s: %w", path, err)
+	}
+	return f.Packs, nil
+}
+
 func repoRoot() string {
 	executable, err := os.Executable()
 	if err != nil {
@@ -1152,9 +1333,12 @@ func repoRoot() string {
 
 func usage() {
 	fmt.Fprintln(os.Stderr, "Usage:")
-	fmt.Fprintln(os.Stderr, "  agent-packs search [query]")
-	fmt.Fprintln(os.Stderr, "  agent-packs show <pack-id>")
-	fmt.Fprintln(os.Stderr, "  agent-packs install <pack-id|registry/pack-id>... [--target dir] [--agent tool|--target-tool tool] [--only all|skills|plugins] [--mode reference|symlink|copy|native] [--on-conflict skip|overwrite|backup] [--project dir|--global] [--dry-run] [--execute-plugins]")
+	fmt.Fprintln(os.Stderr, "  agent-packs search [query] [--tag t] [--category c] [--stability s] [--json]")
+	fmt.Fprintln(os.Stderr, "  agent-packs show <pack-id> [--json]")
+	fmt.Fprintln(os.Stderr, "  agent-packs install <pack-id[@version]>... [--from file] [--target dir] [--agent tool] [--only all|skills|plugins] [--mode reference|symlink|copy|native] [--on-conflict skip|overwrite|backup] [--dry-run] [--execute-plugins]")
+	fmt.Fprintln(os.Stderr, "  agent-packs sync [--project dir] [--target dir] [--agent tool] [--mode mode]")
+	fmt.Fprintln(os.Stderr, "  agent-packs freeze [--target dir] [--project dir]")
+	fmt.Fprintln(os.Stderr, "  agent-packs export [--target dir] [--output file]")
 	fmt.Fprintln(os.Stderr, "  agent-packs skills install|list|upgrade|uninstall ...")
 	fmt.Fprintln(os.Stderr, "  agent-packs plugins install|list|upgrade|uninstall ... [--execute-plugins]")
 	fmt.Fprintln(os.Stderr, "  agent-packs list [--target dir]")
@@ -1167,7 +1351,7 @@ func usage() {
 	fmt.Fprintln(os.Stderr, "  agent-packs audit <pack-id> [--json]")
 	fmt.Fprintln(os.Stderr, "  agent-packs tree|deps <pack-id> [--json]")
 	fmt.Fprintln(os.Stderr, "  agent-packs publish --check [--policy file] [--json]")
-	fmt.Fprintln(os.Stderr, "  agent-packs policy check <pack-id> <policy.json>")
+	fmt.Fprintln(os.Stderr, "  agent-packs policy check <pack-id> <policy.json|preset>")
 	fmt.Fprintln(os.Stderr, "  agent-packs licenses|attribution|resolve <pack-id>")
 	fmt.Fprintln(os.Stderr, "  agent-packs index [--output path]")
 	fmt.Fprintln(os.Stderr, "  agent-packs diff <pack-id> [--target dir]")
@@ -1178,7 +1362,8 @@ func usage() {
 	fmt.Fprintln(os.Stderr, "  agent-packs uninstall <pack-id>... [--target dir]")
 	fmt.Fprintln(os.Stderr, "  agent-packs doctor [targets]")
 	fmt.Fprintln(os.Stderr, "  agent-packs validate <file-or-directory>")
-	fmt.Fprintln(os.Stderr, "  agent-packs status [--target dir]")
+	fmt.Fprintln(os.Stderr, "  agent-packs status [--target dir] [--json]")
+	fmt.Fprintln(os.Stderr, "  agent-packs target add|list|remove ...")
 	fmt.Fprintln(os.Stderr, "  agent-packs completion <bash|zsh|fish>")
 	fmt.Fprintln(os.Stderr, "  agent-packs registry add|list|remove ...")
 }

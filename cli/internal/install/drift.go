@@ -2,6 +2,7 @@ package install
 
 import (
 	"crypto/sha256"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -12,30 +13,30 @@ import (
 	"github.com/sandeshh/agent-packs/cli/internal/util"
 )
 
-type driftItem struct {
-	packID string
-	name   string
-	dest   string
-	state  string // ok | missing | drifted
-	detail string
+// DriftItem is a single capability checked for drift; exported for JSON output.
+type DriftItem struct {
+	Pack   string `json:"pack"`
+	Name   string `json:"name"`
+	Dest   string `json:"dest"`
+	State  string `json:"state"`
+	Detail string `json:"detail,omitempty"`
 }
 
-func DriftCheck(target string, out io.Writer) error {
+func collectDriftItems(target string) ([]DriftItem, error) {
 	absTarget, err := filepath.Abs(util.ExpandHome(target))
 	if err != nil {
-		return err
+		return nil, err
 	}
 	receiptsDir := filepath.Join(absTarget, "receipts")
 	entries, err := os.ReadDir(receiptsDir)
 	if err != nil {
 		if os.IsNotExist(err) {
-			fmt.Fprintln(out, "No installed packs found")
-			return nil
+			return nil, nil
 		}
-		return err
+		return nil, err
 	}
 
-	var items []driftItem
+	var items []DriftItem
 	for _, entry := range entries {
 		if entry.IsDir() || filepath.Ext(entry.Name()) != ".json" {
 			continue
@@ -53,22 +54,34 @@ func DriftCheck(target string, out io.Writer) error {
 	}
 
 	sort.Slice(items, func(i, j int) bool {
-		if items[i].packID != items[j].packID {
-			return items[i].packID < items[j].packID
+		if items[i].Pack != items[j].Pack {
+			return items[i].Pack < items[j].Pack
 		}
-		return items[i].name < items[j].name
+		return items[i].Name < items[j].Name
 	})
+	return items, nil
+}
+
+func DriftCheck(target string, out io.Writer) error {
+	items, err := collectDriftItems(target)
+	if err != nil {
+		return err
+	}
+	if items == nil {
+		fmt.Fprintln(out, "No installed packs found")
+		return nil
+	}
 
 	drifted := 0
 	for _, it := range items {
-		switch it.state {
+		switch it.State {
 		case "ok":
-			fmt.Fprintf(out, "OK       %s/%s\n", it.packID, it.name)
+			fmt.Fprintf(out, "OK       %s/%s\n", it.Pack, it.Name)
 		case "missing":
-			fmt.Fprintf(out, "MISSING  %s/%s — destination %s not found\n", it.packID, it.name, it.dest)
+			fmt.Fprintf(out, "MISSING  %s/%s — destination %s not found\n", it.Pack, it.Name, it.Dest)
 			drifted++
 		case "drifted":
-			fmt.Fprintf(out, "DRIFTED  %s/%s — %s\n", it.packID, it.name, it.detail)
+			fmt.Fprintf(out, "DRIFTED  %s/%s — %s\n", it.Pack, it.Name, it.Detail)
 			drifted++
 		}
 	}
@@ -87,12 +100,25 @@ func DriftCheck(target string, out io.Writer) error {
 	return nil
 }
 
-func checkDrift(packID string, item model.PlanItem) driftItem {
-	it := driftItem{packID: packID, name: item.Name, dest: item.Destination}
+func DriftCheckJSON(target string, out io.Writer) error {
+	items, err := collectDriftItems(target)
+	if err != nil {
+		return err
+	}
+	if items == nil {
+		items = []DriftItem{}
+	}
+	enc := json.NewEncoder(out)
+	enc.SetIndent("", "  ")
+	return enc.Encode(items)
+}
+
+func checkDrift(packID string, item model.PlanItem) DriftItem {
+	it := DriftItem{Pack: packID, Name: item.Name, Dest: item.Destination}
 	dest := util.ExpandHome(item.Destination)
 
 	if _, err := os.Stat(dest); err != nil {
-		it.state = "missing"
+		it.State = "missing"
 		return it
 	}
 
@@ -100,13 +126,13 @@ func checkDrift(packID string, item model.PlanItem) driftItem {
 	case "symlink":
 		link, err := os.Readlink(dest)
 		if err != nil {
-			it.state = "missing"
+			it.State = "missing"
 			return it
 		}
 		want := util.ExpandHome(item.Source)
 		if link != want {
-			it.state = "drifted"
-			it.detail = fmt.Sprintf("symlink → %s, expected → %s", link, want)
+			it.State = "drifted"
+			it.Detail = fmt.Sprintf("symlink → %s, expected → %s", link, want)
 			return it
 		}
 
@@ -115,22 +141,22 @@ func checkDrift(packID string, item model.PlanItem) driftItem {
 			skillFile := filepath.Join(dest, "SKILL.md")
 			destHash, err := hashFile(skillFile)
 			if err != nil {
-				it.state = "drifted"
-				it.detail = "SKILL.md missing from installed directory"
+				it.State = "drifted"
+				it.Detail = "SKILL.md missing from installed directory"
 				return it
 			}
 			if util.IsLocalSource(item.Source) {
 				srcHash, err := hashFile(filepath.Join(util.ExpandHome(item.Source), "SKILL.md"))
 				if err == nil && srcHash != destHash {
-					it.state = "drifted"
-					it.detail = fmt.Sprintf("content hash differs from source (dest=%.8s src=%.8s)", destHash, srcHash)
+					it.State = "drifted"
+					it.Detail = fmt.Sprintf("content hash differs from source (dest=%.8s src=%.8s)", destHash, srcHash)
 					return it
 				}
 			}
 		}
 	}
 
-	it.state = "ok"
+	it.State = "ok"
 	return it
 }
 

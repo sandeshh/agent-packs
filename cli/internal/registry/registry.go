@@ -64,17 +64,37 @@ func FindPack(registry, id string) (model.Pack, error) {
 }
 
 func ResolvePack(defaultRegistry, home, ref string) (model.Pack, string, error) {
-	if !strings.Contains(ref, "/") {
-		pack, err := FindPack(defaultRegistry, ref)
-		return pack, defaultRegistry, err
+	packID, versionPin := splitVersionPin(ref)
+	if !strings.Contains(packID, "/") {
+		pack, err := FindPack(defaultRegistry, packID)
+		if err != nil {
+			return model.Pack{}, "", err
+		}
+		if versionPin != "" && pack.Version != versionPin {
+			return model.Pack{}, "", fmt.Errorf("pack %s: version %s not available (registry has %s)", packID, versionPin, pack.Version)
+		}
+		return pack, defaultRegistry, nil
 	}
-	parts := strings.SplitN(ref, "/", 2)
+	parts := strings.SplitN(packID, "/", 2)
 	registryPath, err := ResolveRegistry(home, parts[0])
 	if err != nil {
 		return model.Pack{}, "", err
 	}
 	pack, err := FindPack(registryPath, parts[1])
-	return pack, registryPath, err
+	if err != nil {
+		return model.Pack{}, "", err
+	}
+	if versionPin != "" && pack.Version != versionPin {
+		return model.Pack{}, "", fmt.Errorf("pack %s: version %s not available (registry has %s)", packID, versionPin, pack.Version)
+	}
+	return pack, registryPath, nil
+}
+
+func splitVersionPin(ref string) (string, string) {
+	if idx := strings.Index(ref, "@"); idx >= 0 {
+		return ref[:idx], ref[idx+1:]
+	}
+	return ref, ""
 }
 
 func Search(registry, query string, out io.Writer) error {
@@ -92,7 +112,18 @@ func Search(registry, query string, out io.Writer) error {
 	return nil
 }
 
+// SearchFilter holds optional facet filters for MatchPacks.
+type SearchFilter struct {
+	Tag       string
+	Category  string
+	Stability string
+}
+
 func MatchPacks(registry, query string) ([]model.Pack, error) {
+	return FilteredMatchPacks(registry, query, SearchFilter{})
+}
+
+func FilteredMatchPacks(registry, query string, f SearchFilter) ([]model.Pack, error) {
 	packs, err := LoadPacks(registry)
 	if err != nil {
 		return nil, err
@@ -100,11 +131,31 @@ func MatchPacks(registry, query string) ([]model.Pack, error) {
 	query = strings.ToLower(strings.TrimSpace(query))
 	var matches []model.Pack
 	for _, pack := range packs {
-		if query == "" || packMatches(pack, query) {
-			matches = append(matches, pack)
+		if query != "" && !packMatches(pack, query) {
+			continue
 		}
+		if f.Tag != "" && !containsString(pack.Tags, f.Tag) {
+			continue
+		}
+		if f.Category != "" && !containsString(pack.Categories, f.Category) {
+			continue
+		}
+		if f.Stability != "" && pack.Stability != f.Stability {
+			continue
+		}
+		matches = append(matches, pack)
 	}
 	return matches, nil
+}
+
+func containsString(slice []string, s string) bool {
+	s = strings.ToLower(s)
+	for _, v := range slice {
+		if strings.ToLower(v) == s {
+			return true
+		}
+	}
+	return false
 }
 
 func Show(registry, id string, out io.Writer) error {
